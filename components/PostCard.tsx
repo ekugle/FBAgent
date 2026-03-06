@@ -1,0 +1,307 @@
+"use client";
+
+import { useState } from "react";
+import { Post } from "@/lib/supabase";
+import {
+  Clock,
+  CheckCircle,
+  XCircle,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  Trash2,
+  Bot,
+} from "lucide-react";
+import { clsx } from "clsx";
+import { formatDistanceToNow } from "date-fns";
+
+const STATUS_CONFIG: Record<
+  string,
+  { label: string; color: string; icon: React.ElementType }
+> = {
+  draft: { label: "Draft", color: "bg-gray-100 text-gray-600", icon: Clock },
+  pending_approval: {
+    label: "Pending Approval",
+    color: "bg-amber-100 text-amber-700",
+    icon: Clock,
+  },
+  scheduled: {
+    label: "Scheduled",
+    color: "bg-blue-100 text-blue-700",
+    icon: Clock,
+  },
+  published: {
+    label: "Published",
+    color: "bg-emerald-100 text-emerald-700",
+    icon: CheckCircle,
+  },
+  rejected: {
+    label: "Rejected",
+    color: "bg-red-100 text-red-700",
+    icon: XCircle,
+  },
+};
+
+interface PostCardProps {
+  post: Post;
+}
+
+export default function PostCard({ post }: PostCardProps) {
+  const [loading, setLoading] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editedContent, setEditedContent] = useState(post.content);
+  const [currentStatus, setCurrentStatus] = useState(post.status);
+  const [error, setError] = useState<string | null>(null);
+
+  const statusConfig = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.draft;
+  const StatusIcon = statusConfig.icon;
+
+  const canApprove = currentStatus === "pending_approval";
+  const canReject = currentStatus === "pending_approval";
+
+  async function handleApprove() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "approve",
+          content: editedContent,
+          approved_by: "admin",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to approve");
+      setCurrentStatus(post.scheduled_at ? "scheduled" : "published");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error approving post");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleReject() {
+    const reason = prompt("Reason for rejection (optional):");
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reject",
+          rejected_reason: reason ?? undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to reject");
+      setCurrentStatus("rejected");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error rejecting post");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update", content: editedContent }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+      setEditMode(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error saving post");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Delete this post draft?")) return;
+    setLoading(true);
+    try {
+      await fetch(`/api/posts/${post.id}`, { method: "DELETE" });
+      window.location.reload();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className={clsx(
+        "card p-6 transition-all",
+        currentStatus === "pending_approval" && "border-amber-300"
+      )}
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={`badge ${statusConfig.color}`}>
+            <StatusIcon className="w-3 h-3 mr-1" />
+            {statusConfig.label}
+          </span>
+          <span className="text-xs text-gray-400">
+            {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+          </span>
+          {post.created_by === "agent" && (
+            <span className="badge bg-purple-100 text-purple-700">
+              <Bot className="w-3 h-3 mr-1" />
+              AI Generated
+            </span>
+          )}
+          {post.scheduled_at && (
+            <span className="text-xs text-blue-600">
+              Scheduled: {new Date(post.scheduled_at).toLocaleString()}
+            </span>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {post.fb_post_id && (
+            <a
+              href={`https://facebook.com/${post.fb_post_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary py-1.5 text-xs"
+            >
+              <ExternalLink className="w-3 h-3" />
+              View on FB
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Content */}
+      {editMode ? (
+        <textarea
+          value={editedContent}
+          onChange={(e) => setEditedContent(e.target.value)}
+          rows={6}
+          className="w-full text-sm text-gray-800 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+        />
+      ) : (
+        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+          {editedContent}
+        </p>
+      )}
+
+      {/* Agent notes (collapsible) */}
+      {post.agent_notes && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <Bot className="w-3 h-3" />
+            Agent reasoning
+            {showNotes ? (
+              <ChevronUp className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+          </button>
+          {showNotes && (
+            <div className="mt-2 p-3 bg-purple-50 rounded-lg text-xs text-purple-800 leading-relaxed">
+              {post.agent_notes}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Rejection reason */}
+      {post.rejected_reason && (
+        <div className="mt-3 p-3 bg-red-50 rounded-lg text-xs text-red-700">
+          <strong>Rejection reason:</strong> {post.rejected_reason}
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="mt-3 p-3 bg-red-50 rounded-lg text-xs text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* Footer actions */}
+      {(canApprove || canReject || ["draft", "rejected"].includes(currentStatus)) && (
+        <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 flex-wrap">
+          {canApprove && (
+            <>
+              {editMode ? (
+                <>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={loading}
+                    className="btn-primary"
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditMode(false);
+                      setEditedContent(post.content);
+                    }}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleApprove}
+                    disabled={loading}
+                    className="btn-success"
+                  >
+                    <Send className="w-4 h-4" />
+                    {loading ? "Publishing..." : "Approve & Publish"}
+                  </button>
+                  <button
+                    onClick={() => setEditMode(true)}
+                    className="btn-secondary"
+                  >
+                    Edit
+                  </button>
+                </>
+              )}
+            </>
+          )}
+
+          {canReject && !editMode && (
+            <button
+              onClick={handleReject}
+              disabled={loading}
+              className="btn-danger"
+            >
+              <XCircle className="w-4 h-4" />
+              Reject
+            </button>
+          )}
+
+          {["draft", "rejected"].includes(currentStatus) && (
+            <button
+              onClick={handleDelete}
+              disabled={loading}
+              className="btn-secondary text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

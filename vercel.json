@@ -1,0 +1,30 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/publish",
+      "schedule": "0 9,15 * * 1-5"
+    },
+    {
+      "path": "/api/cron/monitor",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/analytics",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "functions": {
+    "app/api/agent/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/cron/publish/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/cron/analytics/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cron/monitor/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

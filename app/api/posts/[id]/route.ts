@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, updatePostStatus } from "@/lib/supabase";
-import { publishPost, schedulePost } from "@/lib/facebook";
+import { publishPost, schedulePost } from "@/lib/publer";
 import { z } from "zod";
 
 const PatchSchema = z.object({
@@ -102,8 +102,7 @@ export async function PATCH(
 
       try {
         if (willSchedule) {
-          const scheduleTs = Math.floor(new Date(effectiveScheduledAt!).getTime() / 1000);
-          const result = await schedulePost(postContent, scheduleTs, imageUrls);
+          const result = await schedulePost(postContent, effectiveScheduledAt!, imageUrls);
           await updatePostStatus(id, "scheduled", {
             approved_by,
             fb_post_id: result.id,

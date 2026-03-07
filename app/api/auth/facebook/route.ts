@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 const SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
-  "pages_read_user_content",
   "pages_manage_posts",
   "pages_manage_engagement",
   "public_profile",

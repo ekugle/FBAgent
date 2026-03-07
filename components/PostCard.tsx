@@ -210,7 +210,7 @@ export default function PostCard({ post }: PostCardProps) {
       )}
 
       {/* Leonardo AI image prompt (hustle posts only) */}
-      {(post.metadata as Record<string, unknown>)?.image_prompt && (
+      {!!(post.metadata as Record<string, unknown>)?.image_prompt && (
         <div className="mt-3">
           <button
             onClick={() => setShowImagePrompt(!showImagePrompt)}

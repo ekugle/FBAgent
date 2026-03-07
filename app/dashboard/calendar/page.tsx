@@ -200,12 +200,12 @@ export default async function CalendarPage({ searchParams }: Props) {
                       </div>
 
                       {/* Business or URL label */}
-                      {isHustle && meta?.business && (
+                      {isHustle && !!meta?.business && (
                         <div className="text-xs font-semibold text-orange-800 capitalize">
                           {String(meta.business)}
                         </div>
                       )}
-                      {!isHustle && meta?.url_label && (
+                      {!isHustle && !!meta?.url_label && (
                         <div className="text-xs font-semibold text-sky-800">
                           {String(meta.url_label)}{" "}
                           <span className="font-normal text-sky-600">
@@ -221,7 +221,7 @@ export default async function CalendarPage({ searchParams }: Props) {
                       </p>
 
                       {/* Image prompt indicator */}
-                      {isHustle && meta?.image_prompt && (
+                      {isHustle && !!meta?.image_prompt && (
                         <div className="text-xs text-purple-600 italic line-clamp-2">
                           🎨{" "}
                           {String(meta.image_prompt).slice(0, 80)}

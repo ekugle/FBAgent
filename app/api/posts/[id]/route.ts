@@ -102,8 +102,14 @@ export async function PATCH(
         },
       });
 
-      // Determine final status: agent/tools.ts decides schedule vs publish,
-      // but we optimistically set the DB status here to match.
+      // If the agent failed, surface the error — don't mark post as published
+      if (!agentResult.success) {
+        return NextResponse.json(
+          { error: agentResult.error ?? "Failed to publish to Facebook", agent: agentResult },
+          { status: 500 }
+        );
+      }
+
       const tenMinsFromNow = new Date(Date.now() + 10 * 60 * 1000);
       const willSchedule =
         !!effectiveScheduledAt &&

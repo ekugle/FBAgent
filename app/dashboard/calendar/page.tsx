@@ -1,6 +1,6 @@
 import { createServerClient } from "@/lib/supabase";
 import { Calendar } from "lucide-react";
-import { getCurrentWeekMonday, SLOT_HOURS_CT } from "@/lib/content-generator";
+import { getCurrentWeekMonday, SLOT_HOURS_CT } from "@/lib/post-schedule";
 import CalendarControls from "@/components/CalendarControls";
 import UrlManager from "@/components/UrlManager";
 

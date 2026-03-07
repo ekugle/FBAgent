@@ -303,9 +303,14 @@ export async function executeTool(
         const imageUrls = toolInput.image_urls as string[] | undefined;
         const scheduledAt = toolInput.scheduled_at as string | undefined;
 
-        if (scheduledAt) {
+        // FB requires scheduled time to be at least 10 min in the future
+        const tenMinutesFromNow = new Date(Date.now() + 10 * 60 * 1000);
+        const shouldSchedule =
+          !!scheduledAt && new Date(scheduledAt) > tenMinutesFromNow;
+
+        if (shouldSchedule) {
           const scheduleTs = Math.floor(
-            new Date(scheduledAt).getTime() / 1000
+            new Date(scheduledAt!).getTime() / 1000
           );
           const result = await schedulePost(content, scheduleTs, imageUrls);
           await updatePostStatus(postId, "scheduled", {

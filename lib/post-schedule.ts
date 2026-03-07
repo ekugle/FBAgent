@@ -51,16 +51,19 @@ export const SLOT_LABELS = ["7:00 AM", "12:00 PM", "6:00 PM"] as const;
 /**
  * Convert a CT slot on a given Monday into a UTC ISO string.
  * Uses CDT offset (UTC−5) for March–November. Change to 6 for CST.
+ * Pass custom slotHours to override the default [7, 12, 18].
  */
 export function slotToUtcISO(
   mondayDate: Date,
   dayIndex: number,
-  slotIndex: number
+  slotIndex: number,
+  slotHours?: readonly number[]
 ): string {
   const CT_OFFSET_HOURS = 5; // CDT = UTC-5
+  const hours = slotHours ?? SLOT_HOURS_CT;
   const d = new Date(mondayDate);
   d.setUTCDate(d.getUTCDate() + dayIndex);
-  d.setUTCHours(SLOT_HOURS_CT[slotIndex] + CT_OFFSET_HOURS, 0, 0, 0);
+  d.setUTCHours(hours[slotIndex] + CT_OFFSET_HOURS, 0, 0, 0);
   return d.toISOString();
 }
 

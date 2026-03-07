@@ -55,8 +55,17 @@ export default function PostCard({ post }: PostCardProps) {
   const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
+  const [editedScheduledAt, setEditedScheduledAt] = useState(post.scheduled_at ?? "");
   const [currentStatus, setCurrentStatus] = useState(post.status);
   const [error, setError] = useState<string | null>(null);
+
+  /** Convert UTC ISO string → "YYYY-MM-DDTHH:mm" in browser local time for datetime-local input */
+  function toDatetimeLocal(iso: string): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const offset = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+  }
 
   const statusConfig = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.draft;
   const StatusIcon = statusConfig.icon;
@@ -115,10 +124,14 @@ export default function PostCard({ post }: PostCardProps) {
     setLoading(true);
     setError(null);
     try {
+      const body: Record<string, unknown> = { action: "update", content: editedContent };
+      if (editedScheduledAt) {
+        body.scheduled_at = new Date(editedScheduledAt).toISOString();
+      }
       const res = await fetch(`/api/posts/${post.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update", content: editedContent }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save");
@@ -217,7 +230,31 @@ export default function PostCard({ post }: PostCardProps) {
             className="w-full text-sm text-gray-800 border border-blue-400 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
             autoFocus
           />
-          <div className="flex items-center gap-2 mt-2">
+          {/* Scheduled date/time */}
+          <div className="mt-3 flex items-center gap-3">
+            <label className="text-xs text-gray-500 whitespace-nowrap">
+              Scheduled (your local time)
+            </label>
+            <input
+              type="datetime-local"
+              value={editedScheduledAt ? toDatetimeLocal(editedScheduledAt) : ""}
+              onChange={(e) =>
+                setEditedScheduledAt(
+                  e.target.value ? new Date(e.target.value).toISOString() : ""
+                )
+              }
+              className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            {editedScheduledAt && (
+              <button
+                onClick={() => setEditedScheduledAt("")}
+                className="text-xs text-gray-400 hover:text-red-500"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-3">
             <button
               onClick={handleSaveEdit}
               disabled={loading}
@@ -229,6 +266,7 @@ export default function PostCard({ post }: PostCardProps) {
               onClick={() => {
                 setEditMode(false);
                 setEditedContent(post.content);
+                setEditedScheduledAt(post.scheduled_at ?? "");
               }}
               className="btn-secondary py-1.5 text-xs"
             >

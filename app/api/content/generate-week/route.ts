@@ -4,7 +4,7 @@
  * using the hustle/word mix constraints and saves each as a pending_approval post.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, getAgentMemory, setAgentMemory } from "@/lib/supabase";
 import {
   generateHustlePost,
@@ -21,8 +21,16 @@ import {
 // Allow up to 5 minutes on Vercel (21 Claude calls can take ~60s total)
 export const maxDuration = 300;
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const body = await req.json().catch(() => ({}));
+    // week_start: "YYYY-MM-DD" (Monday of the desired week)
+    // slot_hours: [7, 12, 18] (CT hours for each of the 3 daily slots)
+    const { week_start, slot_hours } = body as {
+      week_start?: string;
+      slot_hours?: [number, number, number];
+    };
+
     const db = createServerClient();
 
     // 1. Load active word-post URLs
@@ -39,8 +47,12 @@ export async function POST() {
       week_start: string;
     } | null;
 
-    const monday = getCurrentWeekMonday();
+    const monday = week_start
+      ? new Date(week_start + "T00:00:00Z")
+      : getCurrentWeekMonday();
     const weekStartStr = monday.toISOString().split("T")[0];
+
+    const customSlotHours: [number, number, number] = slot_hours ?? [7, 12, 18];
 
     const usedThisWeek =
       tracking?.week_start === weekStartStr
@@ -90,13 +102,16 @@ export async function POST() {
       }
     }
 
-    // 5. Insert all successful posts
+    // 5. Insert all successful posts — skip any slots already in the past
+    // FB requires schedule time ≥ 10 min from now; we add a small buffer.
+    const cutoff = new Date(Date.now() + 10 * 60 * 1000);
+
     const postsToInsert = generated
       .filter((g) => g.content && !g.error)
       .map(({ slot, content, image_prompt }) => ({
         content,
         status: "pending_approval" as const,
-        scheduled_at: slotToUtcISO(monday, slot.dayIndex, slot.slotIndex),
+        scheduled_at: slotToUtcISO(monday, slot.dayIndex, slot.slotIndex, customSlotHours),
         created_by: "agent",
         agent_notes:
           slot.postType === "hustle"
@@ -111,7 +126,8 @@ export async function POST() {
             ? { business: slot.business, image_prompt: image_prompt ?? "" }
             : { url: slot.url, url_label: slot.urlLabel, angle: slot.angle }),
         },
-      }));
+      }))
+      .filter((p) => new Date(p.scheduled_at) > cutoff);
 
     const { data: savedPosts, error: insertError } = await db
       .from("posts")
@@ -135,10 +151,15 @@ export async function POST() {
     );
 
     const failedCount = generated.filter((g) => g.error).length;
+    const skippedCount = generated.filter(
+      (g) => g.content && !g.error &&
+        new Date(slotToUtcISO(monday, g.slot.dayIndex, g.slot.slotIndex, customSlotHours)) <= cutoff
+    ).length;
 
     return NextResponse.json({
       posts_created: savedPosts?.length ?? 0,
       failed: failedCount,
+      skipped_past: skippedCount,
       week_start: weekStartStr,
       slots: generated.map((g) => ({
         day: g.slot.dayIndex,

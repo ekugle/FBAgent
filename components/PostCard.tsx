@@ -13,6 +13,7 @@ import {
   Trash2,
   Bot,
   ImageIcon,
+  Pencil,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDistanceToNow } from "date-fns";
@@ -62,6 +63,7 @@ export default function PostCard({ post }: PostCardProps) {
 
   const canApprove = currentStatus === "pending_approval";
   const canReject = currentStatus === "pending_approval";
+  const canEdit = currentStatus !== "published";
 
   async function handleApprove() {
     setLoading(true);
@@ -181,6 +183,16 @@ export default function PostCard({ post }: PostCardProps) {
 
         {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0">
+          {canEdit && !editMode && (
+            <button
+              onClick={() => setEditMode(true)}
+              className="btn-secondary py-1.5 text-xs"
+              title="Edit post content"
+            >
+              <Pencil className="w-3 h-3" />
+              Edit
+            </button>
+          )}
           {post.fb_post_id && (
             <a
               href={`https://facebook.com/${post.fb_post_id}`}
@@ -197,12 +209,33 @@ export default function PostCard({ post }: PostCardProps) {
 
       {/* Content */}
       {editMode ? (
-        <textarea
-          value={editedContent}
-          onChange={(e) => setEditedContent(e.target.value)}
-          rows={6}
-          className="w-full text-sm text-gray-800 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-        />
+        <div>
+          <textarea
+            value={editedContent}
+            onChange={(e) => setEditedContent(e.target.value)}
+            rows={10}
+            className="w-full text-sm text-gray-800 border border-blue-400 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+            autoFocus
+          />
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={handleSaveEdit}
+              disabled={loading}
+              className="btn-primary py-1.5 text-xs"
+            >
+              {loading ? "Saving..." : "Save Changes"}
+            </button>
+            <button
+              onClick={() => {
+                setEditMode(false);
+                setEditedContent(post.content);
+              }}
+              className="btn-secondary py-1.5 text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       ) : (
         <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
           {editedContent}
@@ -270,51 +303,20 @@ export default function PostCard({ post }: PostCardProps) {
       )}
 
       {/* Footer actions */}
-      {(canApprove || canReject || ["draft", "rejected"].includes(currentStatus)) && (
+      {(canApprove || canReject || ["draft", "rejected"].includes(currentStatus)) && !editMode && (
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 flex-wrap">
           {canApprove && (
-            <>
-              {editMode ? (
-                <>
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={loading}
-                    className="btn-primary"
-                  >
-                    Save Changes
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditMode(false);
-                      setEditedContent(post.content);
-                    }}
-                    className="btn-secondary"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={handleApprove}
-                    disabled={loading}
-                    className="btn-success"
-                  >
-                    <Send className="w-4 h-4" />
-                    {loading ? "Publishing..." : "Approve & Publish"}
-                  </button>
-                  <button
-                    onClick={() => setEditMode(true)}
-                    className="btn-secondary"
-                  >
-                    Edit
-                  </button>
-                </>
-              )}
-            </>
+            <button
+              onClick={handleApprove}
+              disabled={loading}
+              className="btn-success"
+            >
+              <Send className="w-4 h-4" />
+              {loading ? "Publishing..." : "Approve & Publish"}
+            </button>
           )}
 
-          {canReject && !editMode && (
+          {canReject && (
             <button
               onClick={handleReject}
               disabled={loading}

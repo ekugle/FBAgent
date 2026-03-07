@@ -116,11 +116,11 @@ export async function publishPost(
     facebookPost.media = imageUrls.map((url) => ({ url }));
   }
 
-  const response = await publerFetch<PublerJobResponse>("/posts/schedule", {
+  const response = await publerFetch<PublerJobResponse>("/posts/schedule/publish", {
     method: "POST",
     body: JSON.stringify({
       bulk: {
-        state: "now",
+        state: "scheduled",
         posts: [
           {
             networks: { facebook: facebookPost },

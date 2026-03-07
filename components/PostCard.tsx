@@ -73,6 +73,7 @@ export default function PostCard({ post }: PostCardProps) {
 
   const canApprove = currentStatus === "pending_approval";
   const canReject = currentStatus === "pending_approval";
+  const canPostNow = ["pending_approval", "scheduled", "draft"].includes(currentStatus);
   const canEdit = currentStatus !== "published";
 
   async function handleApprove(postNow = false) {
@@ -239,28 +240,30 @@ export default function PostCard({ post }: PostCardProps) {
             autoFocus
           />
           {/* Scheduled date/time */}
-          <div className="mt-3 flex items-center gap-3">
-            <label className="text-xs text-gray-500 whitespace-nowrap">
-              Scheduled (your local time)
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <label className="block text-xs font-medium text-blue-700 mb-1">
+              Schedule Date &amp; Time (your local time)
             </label>
-            <input
-              type="datetime-local"
-              value={editedScheduledAt ? toDatetimeLocal(editedScheduledAt) : ""}
-              onChange={(e) =>
-                setEditedScheduledAt(
-                  e.target.value ? new Date(e.target.value).toISOString() : ""
-                )
-              }
-              className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            {editedScheduledAt && (
-              <button
-                onClick={() => setEditedScheduledAt("")}
-                className="text-xs text-gray-400 hover:text-red-500"
-              >
-                Clear
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              <input
+                type="datetime-local"
+                value={editedScheduledAt ? toDatetimeLocal(editedScheduledAt) : ""}
+                onChange={(e) =>
+                  setEditedScheduledAt(
+                    e.target.value ? new Date(e.target.value).toISOString() : ""
+                  )
+                }
+                className="text-sm border border-blue-300 rounded px-2 py-1.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              />
+              {editedScheduledAt && (
+                <button
+                  onClick={() => setEditedScheduledAt("")}
+                  className="text-xs text-gray-400 hover:text-red-500"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 mt-3">
             <button
@@ -349,29 +352,30 @@ export default function PostCard({ post }: PostCardProps) {
       )}
 
       {/* Footer actions */}
-      {(canApprove || canReject || ["draft", "rejected"].includes(currentStatus)) && !editMode && (
+      {(canApprove || canPostNow || canReject || ["draft", "rejected"].includes(currentStatus)) && !editMode && (
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 flex-wrap">
           {canApprove && (
-            <>
-              <button
-                onClick={() => handleApprove(false)}
-                disabled={loading}
-                className="btn-success"
-                title={post.scheduled_at ? `Schedule for ${new Date(post.scheduled_at).toLocaleString()}` : "Approve & publish immediately"}
-              >
-                <Send className="w-4 h-4" />
-                {loading ? "Working..." : post.scheduled_at ? "Approve & Schedule" : "Approve & Publish"}
-              </button>
-              <button
-                onClick={() => handleApprove(true)}
-                disabled={loading}
-                className="btn-primary"
-                title="Publish to Facebook right now, ignoring scheduled time"
-              >
-                <Zap className="w-4 h-4" />
-                Post Now
-              </button>
-            </>
+            <button
+              onClick={() => handleApprove(false)}
+              disabled={loading}
+              className="btn-success"
+              title={post.scheduled_at ? `Schedule for ${new Date(post.scheduled_at).toLocaleString()}` : "Approve & publish immediately"}
+            >
+              <Send className="w-4 h-4" />
+              {loading ? "Working..." : post.scheduled_at ? "Approve & Schedule" : "Approve & Publish"}
+            </button>
+          )}
+
+          {canPostNow && (
+            <button
+              onClick={() => handleApprove(true)}
+              disabled={loading}
+              className="btn-primary"
+              title="Publish to Facebook right now, ignoring scheduled time"
+            >
+              <Zap className="w-4 h-4" />
+              {loading ? "Working..." : "Post Now"}
+            </button>
           )}
 
           {canReject && (

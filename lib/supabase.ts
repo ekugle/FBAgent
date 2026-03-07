@@ -260,3 +260,20 @@ export async function getRecentAnalytics(
   if (error) throw error;
   return data ?? [];
 }
+
+/**
+ * Uploads an image buffer to Supabase Storage (post-images bucket) and
+ * returns the public URL.  Uses the service-role client so it bypasses RLS.
+ */
+export async function uploadImageToStorage(
+  buffer: Buffer,
+  filename: string
+): Promise<string> {
+  const db = createServerClient();
+  const { error } = await db.storage
+    .from("post-images")
+    .upload(filename, buffer, { contentType: "image/jpeg", upsert: true });
+  if (error) throw error;
+  const { data } = db.storage.from("post-images").getPublicUrl(filename);
+  return data.publicUrl;
+}

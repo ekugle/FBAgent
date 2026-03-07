@@ -6,8 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@/lib/supabase";
+import { createServerClient, uploadImageToStorage } from "@/lib/supabase";
 import { generateImage } from "@/lib/leonardo";
+import { composeBrandedImage } from "@/lib/image-composer";
 
 export async function POST(
   _req: NextRequest,
@@ -37,8 +38,17 @@ export async function POST(
   }
 
   try {
-    const imageUrl = await generateImage(imagePrompt);
+    // 1. Generate base image with Leonardo AI
+    const leonardoUrl = await generateImage(imagePrompt);
 
+    // 2. Composite the TX2Pay branding strip onto the image
+    const brandedBuffer = await composeBrandedImage(leonardoUrl);
+
+    // 3. Upload branded image to Supabase Storage for a permanent URL
+    const filename = `posts/${id}-${Date.now()}.jpg`;
+    const imageUrl = await uploadImageToStorage(brandedBuffer, filename);
+
+    // 4. Save the permanent URL back to the post
     const { error: updateError } = await db
       .from("posts")
       .update({ image_urls: [imageUrl] })

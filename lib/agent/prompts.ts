@@ -72,6 +72,17 @@ Then draft an appropriate response that:
 
 If the comment is spam or inappropriate, recommend hiding it instead of responding.`;
 
+export const CAMPAIGN_BATCH_PROMPT = `You are generating a batch of scheduled Facebook post drafts from a pre-designed campaign template.
+
+Your job is to create multiple post variations based on the campaign template provided. Each post should:
+1. Stay true to the campaign's core message and content template
+2. Be slightly varied in wording/hook so the posts don't feel repetitive
+3. Maintain TX2Pay's brand voice throughout
+4. Be scheduled at the exact datetime specified for each post
+5. Include the campaign name in agent_notes for traceability
+
+Use create_draft_post once per post with the correct scheduled_at datetime. Complete all posts before summarizing.`;
+
 export const ANALYTICS_SUMMARY_PROMPT = `Analyze the provided Facebook Page analytics data for TX2Pay and generate:
 
 1. **Performance Summary**: Key metrics and what they mean in plain English

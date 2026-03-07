@@ -12,6 +12,7 @@ import {
   POST_GENERATION_PROMPT,
   COMMENT_RESPONSE_PROMPT,
   ANALYTICS_SUMMARY_PROMPT,
+  CAMPAIGN_BATCH_PROMPT,
 } from "./prompts";
 import { logAgentRun, updateAgentRun } from "@/lib/supabase";
 
@@ -30,7 +31,8 @@ export type AgentTrigger =
   | "webhook_comment"
   | "manual"
   | "cron_analytics"
-  | "publish_approved";
+  | "publish_approved"
+  | "campaign_batch";
 
 export interface AgentInput {
   trigger: AgentTrigger;
@@ -184,6 +186,8 @@ function buildSystemPrompt(trigger: AgentTrigger): string {
       return `${BASE_SYSTEM_PROMPT}\n\n${ANALYTICS_SUMMARY_PROMPT}`;
     case "publish_approved":
       return `${BASE_SYSTEM_PROMPT}\n\nYou are publishing an approved post or comment reply to Facebook. Use the publish tools to complete this action.`;
+    case "campaign_batch":
+      return `${BASE_SYSTEM_PROMPT}\n\n${CAMPAIGN_BATCH_PROMPT}`;
     case "manual":
     default:
       return BASE_SYSTEM_PROMPT;
@@ -252,6 +256,37 @@ ${ctx.scheduled_at ? `Schedule for: ${ctx.scheduled_at}` : "Publish immediately.
 
 Use publish_approved_post to complete this action.
 `.trim();
+
+    case "campaign_batch": {
+      const times = (ctx.scheduled_times as string[])
+        .map((t, i) => `  Post ${i + 1}: ${t}`)
+        .join("\n");
+      return `
+Generate ${ctx.quantity} Facebook post drafts for the "${ctx.campaign_name}" campaign.
+
+Campaign Details:
+- Name: ${ctx.campaign_name}
+- Category: ${ctx.category || "general"}
+- Description: ${ctx.campaign_description || "N/A"}
+
+Content Template (use this as the base for all posts, vary the hook/wording slightly):
+---
+${ctx.content_template}
+---
+
+${(ctx.image_urls as string[]).length > 0 ? `Images to attach: ${JSON.stringify(ctx.image_urls)}` : "No images."}
+
+Schedule each post at these exact times:
+${times}
+
+Instructions:
+1. Call create_draft_post ${ctx.quantity} times — once per scheduled time above
+2. Each post must include the scheduled_at from the list above
+3. Vary the opening hook across posts so they feel fresh, but keep the core message consistent
+4. In agent_notes for each post, include: "Campaign: ${ctx.campaign_name}"
+5. After all drafts are created, summarize what was generated
+`.trim();
+    }
 
     case "manual":
     default:

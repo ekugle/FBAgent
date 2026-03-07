@@ -9,12 +9,14 @@ import {
   BarChart3,
   Bot,
   Zap,
+  Megaphone,
 } from "lucide-react";
 import { clsx } from "clsx";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Post Queue", href: "/dashboard/posts", icon: FileText },
+  { name: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
   { name: "Comments", href: "/dashboard/comments", icon: MessageSquare },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Agent Runs", href: "/dashboard/agent", icon: Bot },

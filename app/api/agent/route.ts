@@ -14,6 +14,7 @@ const RequestSchema = z.object({
     "manual",
     "cron_analytics",
     "publish_approved",
+    "campaign_batch",
   ]),
   context: z.record(z.unknown()).optional(),
 });

@@ -15,6 +15,8 @@ import {
   Bot,
   ImageIcon,
   Pencil,
+  RefreshCw,
+  Wand2,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDistanceToNow } from "date-fns";
@@ -59,6 +61,9 @@ export default function PostCard({ post }: PostCardProps) {
   const [editedScheduledAt, setEditedScheduledAt] = useState(post.scheduled_at ?? "");
   const [currentStatus, setCurrentStatus] = useState(post.status);
   const [error, setError] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(post.image_urls?.[0] ?? null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   /** Convert UTC ISO string → "YYYY-MM-DDTHH:mm" in browser local time for datetime-local input */
   function toDatetimeLocal(iso: string): string {
@@ -160,6 +165,23 @@ export default function PostCard({ post }: PostCardProps) {
       window.location.reload();
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleGenerateImage() {
+    setGeneratingImage(true);
+    setImageError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/generate-image`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Image generation failed");
+      setImageUrl(data.image_url);
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Error generating image");
+    } finally {
+      setGeneratingImage(false);
     }
   }
 
@@ -291,24 +313,67 @@ export default function PostCard({ post }: PostCardProps) {
         </p>
       )}
 
-      {/* Leonardo AI image prompt (hustle posts only) */}
+      {/* Leonardo AI image generation (hustle posts only) */}
       {!!(post.metadata as Record<string, unknown>)?.image_prompt && (
-        <div className="mt-3">
-          <button
-            onClick={() => setShowImagePrompt(!showImagePrompt)}
-            className="flex items-center gap-1 text-xs text-purple-500 hover:text-purple-700 transition-colors"
-          >
-            <ImageIcon className="w-3 h-3" />
-            Leonardo AI image prompt
-            {showImagePrompt ? (
-              <ChevronUp className="w-3 h-3" />
-            ) : (
-              <ChevronDown className="w-3 h-3" />
-            )}
-          </button>
+        <div className="mt-3 border border-purple-100 rounded-lg p-3 bg-purple-50/50">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              onClick={() => setShowImagePrompt(!showImagePrompt)}
+              className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 transition-colors"
+            >
+              <ImageIcon className="w-3 h-3" />
+              Leonardo AI image prompt
+              {showImagePrompt ? (
+                <ChevronUp className="w-3 h-3" />
+              ) : (
+                <ChevronDown className="w-3 h-3" />
+              )}
+            </button>
+            <button
+              onClick={handleGenerateImage}
+              disabled={generatingImage}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-60 transition-colors"
+            >
+              {generatingImage ? (
+                <>
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  Generating...
+                </>
+              ) : imageUrl ? (
+                <>
+                  <RefreshCw className="w-3 h-3" />
+                  Regenerate
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-3 h-3" />
+                  Generate Image
+                </>
+              )}
+            </button>
+          </div>
+
           {showImagePrompt && (
-            <div className="mt-2 p-3 bg-purple-50 rounded-lg text-xs text-purple-900 leading-relaxed font-mono select-all">
+            <div className="mt-2 p-2 bg-white border border-purple-100 rounded text-xs text-purple-900 leading-relaxed font-mono select-all">
               {String((post.metadata as Record<string, unknown>).image_prompt)}
+            </div>
+          )}
+
+          {imageError && (
+            <p className="mt-2 text-xs text-red-600">{imageError}</p>
+          )}
+
+          {imageUrl && !generatingImage && (
+            <div className="mt-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt="AI-generated post image"
+                className="rounded-lg w-full max-w-sm object-cover border border-purple-200"
+              />
+              <p className="text-xs text-purple-500 mt-1">
+                Image will be attached when this post is published.
+              </p>
             </div>
           )}
         </div>

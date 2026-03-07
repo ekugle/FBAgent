@@ -12,6 +12,7 @@ import {
   Send,
   Trash2,
   Bot,
+  ImageIcon,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { formatDistanceToNow } from "date-fns";
@@ -50,6 +51,7 @@ interface PostCardProps {
 export default function PostCard({ post }: PostCardProps) {
   const [loading, setLoading] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showImagePrompt, setShowImagePrompt] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
   const [currentStatus, setCurrentStatus] = useState(post.status);
@@ -160,6 +162,16 @@ export default function PostCard({ post }: PostCardProps) {
               AI Generated
             </span>
           )}
+          {(post.metadata as Record<string, unknown>)?.post_type === "hustle" && (
+            <span className="badge bg-orange-100 text-orange-700">
+              💪 Hustle
+            </span>
+          )}
+          {(post.metadata as Record<string, unknown>)?.post_type === "word" && (
+            <span className="badge bg-sky-100 text-sky-700">
+              🔗 Word Post
+            </span>
+          )}
           {post.scheduled_at && (
             <span className="text-xs text-blue-600">
               Scheduled: {new Date(post.scheduled_at).toLocaleString()}
@@ -195,6 +207,29 @@ export default function PostCard({ post }: PostCardProps) {
         <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
           {editedContent}
         </p>
+      )}
+
+      {/* Leonardo AI image prompt (hustle posts only) */}
+      {(post.metadata as Record<string, unknown>)?.image_prompt && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowImagePrompt(!showImagePrompt)}
+            className="flex items-center gap-1 text-xs text-purple-500 hover:text-purple-700 transition-colors"
+          >
+            <ImageIcon className="w-3 h-3" />
+            Leonardo AI image prompt
+            {showImagePrompt ? (
+              <ChevronUp className="w-3 h-3" />
+            ) : (
+              <ChevronDown className="w-3 h-3" />
+            )}
+          </button>
+          {showImagePrompt && (
+            <div className="mt-2 p-3 bg-purple-50 rounded-lg text-xs text-purple-900 leading-relaxed font-mono select-all">
+              {String((post.metadata as Record<string, unknown>).image_prompt)}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Agent notes (collapsible) */}

@@ -10,12 +10,14 @@ import {
   Bot,
   Zap,
   Megaphone,
+  CalendarDays,
 } from "lucide-react";
 import { clsx } from "clsx";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Post Queue", href: "/dashboard/posts", icon: FileText },
+  { name: "Content Calendar", href: "/dashboard/calendar", icon: CalendarDays },
   { name: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
   { name: "Comments", href: "/dashboard/comments", icon: MessageSquare },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },

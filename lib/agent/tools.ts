@@ -7,10 +7,8 @@ import {
   getRecentAnalytics,
   updatePostStatus,
 } from "@/lib/supabase";
+import { publishPost, schedulePost, getPagePosts } from "@/lib/publer";
 import {
-  publishPost,
-  schedulePost,
-  getPagePosts,
   getPageInsights,
   getPostInsights,
   replyToComment,
@@ -309,10 +307,7 @@ export async function executeTool(
           !!scheduledAt && new Date(scheduledAt) > tenMinutesFromNow;
 
         if (shouldSchedule) {
-          const scheduleTs = Math.floor(
-            new Date(scheduledAt!).getTime() / 1000
-          );
-          const result = await schedulePost(content, scheduleTs, imageUrls);
+          const result = await schedulePost(content, scheduledAt!, imageUrls);
           await updatePostStatus(postId, "scheduled", {
             fb_post_id: result.id,
             scheduled_at: scheduledAt,

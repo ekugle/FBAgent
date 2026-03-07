@@ -12,7 +12,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { getPagePosts, getPostComments } from "@/lib/facebook";
+import { getPagePosts } from "@/lib/publer";
+import { getPostComments } from "@/lib/facebook";
 import { runAgent } from "@/lib/agent";
 
 export async function GET(req: NextRequest) {

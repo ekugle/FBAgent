@@ -1,5 +1,8 @@
 /**
- * Meta Graph API client for TX2Pay Facebook Business Page management.
+ * Meta Graph API client — comments, analytics, and webhook verification only.
+ *
+ * Publishing is handled by Publer (lib/publer.ts).
+ * This file only needs a Facebook Page Access Token, not a full FB App.
  *
  * Docs: https://developers.facebook.com/docs/graph-api
  */
@@ -7,12 +10,11 @@
 import { createServerClient } from "@/lib/supabase";
 
 const GRAPH_BASE = "https://graph.facebook.com/v19.0";
-
 const PAGE_ID = process.env.FACEBOOK_PAGE_ID!;
 
 /**
  * Returns the page access token.
- * Prefers the value stored in Supabase (set via OAuth flow), falls back to env var.
+ * Prefers the value stored in Supabase, falls back to env var.
  */
 async function getPageToken(): Promise<string> {
   try {
@@ -31,12 +33,11 @@ async function getPageToken(): Promise<string> {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface FBPost {
+export interface FBComment {
   id: string;
-  message?: string;
-  story?: string;
+  message: string;
+  from?: { name: string; id: string };
   created_time: string;
-  permalink_url?: string;
 }
 
 export interface FBPostInsights {
@@ -50,13 +51,6 @@ export interface FBPostInsights {
   clicks: number;
 }
 
-export interface FBComment {
-  id: string;
-  message: string;
-  from?: { name: string; id: string };
-  created_time: string;
-}
-
 export interface FBPageInsights {
   page_impressions: number;
   page_reach: number;
@@ -64,14 +58,6 @@ export interface FBPageInsights {
   page_fans: number;
   page_post_engagements: number;
   period: { start: string; end: string };
-}
-
-export interface PublishResult {
-  id: string; // format: PAGE_ID_POST_ID
-}
-
-export interface ScheduledPostResult {
-  id: string;
 }
 
 // ─── Core fetch helper ────────────────────────────────────────────────────────
@@ -94,7 +80,9 @@ async function graphFetch<T>(
     headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
   });
 
-  const json = (await res.json()) as T & { error?: { message: string; code: number } };
+  const json = (await res.json()) as T & {
+    error?: { message: string; code: number };
+  };
 
   if ("error" in json && json.error) {
     throw new Error(
@@ -103,84 +91,6 @@ async function graphFetch<T>(
   }
 
   return json;
-}
-
-// ─── Posts ────────────────────────────────────────────────────────────────────
-
-/**
- * Publish a post immediately to the Facebook Page feed.
- */
-export async function publishPost(
-  message: string,
-  imageUrls?: string[]
-): Promise<PublishResult> {
-  if (imageUrls && imageUrls.length > 0) {
-    // Multi-photo post: upload each photo as unpublished, then attach to post
-    const photoIds = await Promise.all(
-      imageUrls.map((url) => uploadPhoto(url, true))
-    );
-
-    return graphFetch<PublishResult>(`/${PAGE_ID}/feed`, {
-      method: "POST",
-      body: JSON.stringify({
-        message,
-        attached_media: photoIds.map((pid) => ({ media_fbid: pid })),
-      }),
-    });
-  }
-
-  return graphFetch<PublishResult>(`/${PAGE_ID}/feed`, {
-    method: "POST",
-    body: JSON.stringify({ message }),
-  });
-}
-
-/**
- * Schedule a post for future publishing via the Graph API.
- * @param scheduledUnixTs Unix timestamp (must be 10 min – 30 days in future)
- */
-export async function schedulePost(
-  message: string,
-  scheduledUnixTs: number,
-  imageUrls?: string[]
-): Promise<ScheduledPostResult> {
-  const body: Record<string, unknown> = {
-    message,
-    published: false,
-    scheduled_publish_time: scheduledUnixTs,
-  };
-
-  if (imageUrls && imageUrls.length > 0) {
-    const photoIds = await Promise.all(
-      imageUrls.map((url) => uploadPhoto(url, true))
-    );
-    body.attached_media = photoIds.map((pid) => ({ media_fbid: pid }));
-  }
-
-  return graphFetch<ScheduledPostResult>(`/${PAGE_ID}/feed`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-}
-
-/**
- * Delete a post from the Facebook Page.
- */
-export async function deletePost(fbPostId: string): Promise<void> {
-  await graphFetch(`/${fbPostId}`, { method: "DELETE" });
-}
-
-/**
- * Fetch recent posts from the page feed.
- */
-export async function getPagePosts(limit = 20): Promise<FBPost[]> {
-  const data = await graphFetch<{ data: FBPost[] }>(`/${PAGE_ID}/feed`, {
-    params: {
-      fields: "id,message,story,created_time,permalink_url",
-      limit: String(limit),
-    },
-  });
-  return data.data;
 }
 
 // ─── Comments ─────────────────────────────────────────────────────────────────
@@ -227,27 +137,10 @@ export async function hideComment(commentId: string): Promise<void> {
   });
 }
 
-// ─── Photos ───────────────────────────────────────────────────────────────────
-
-/**
- * Upload a photo by URL. Returns the photo node ID.
- */
-async function uploadPhoto(
-  imageUrl: string,
-  published: boolean
-): Promise<string> {
-  const result = await graphFetch<{ id: string }>(`/${PAGE_ID}/photos`, {
-    method: "POST",
-    body: JSON.stringify({ url: imageUrl, published }),
-  });
-  return result.id;
-}
-
 // ─── Page Insights ────────────────────────────────────────────────────────────
 
 /**
  * Fetch page-level insights for a date range.
- * period: 'day' | 'week' | 'days_28' | 'month' | 'lifetime'
  */
 export async function getPageInsights(
   since: Date,
@@ -262,7 +155,10 @@ export async function getPageInsights(
   ];
 
   const data = await graphFetch<{
-    data: Array<{ name: string; values: Array<{ value: number; end_time: string }> }>;
+    data: Array<{
+      name: string;
+      values: Array<{ value: number; end_time: string }>;
+    }>;
   }>(`/${PAGE_ID}/insights`, {
     params: {
       metric: metrics.join(","),
@@ -310,7 +206,10 @@ export async function getPostInsights(
   ];
 
   const data = await graphFetch<{
-    data: Array<{ name: string; values: Array<{ value: number | Record<string, number> }> }>;
+    data: Array<{
+      name: string;
+      values: Array<{ value: number | Record<string, number> }>;
+    }>;
   }>(`/${fbPostId}/insights`, {
     params: { metric: metrics.join(",") },
   });
@@ -321,12 +220,10 @@ export async function getPostInsights(
     if (typeof val === "number") {
       m[metric.name] = val;
     } else if (typeof val === "object" && val !== null) {
-      // reactions breakdown — sum all types
       m[metric.name] = Object.values(val).reduce((a, b) => a + b, 0);
     }
   }
 
-  // Fetch basic counts from the post node itself
   const post = await graphFetch<{
     comments?: { summary: { total_count: number } };
     shares?: { count: number };

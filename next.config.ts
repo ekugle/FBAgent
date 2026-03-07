@@ -1,9 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  turbopack: {
-    root: __dirname,
-  },
   serverExternalPackages: ["@anthropic-ai/sdk"],
   images: {
     remotePatterns: [

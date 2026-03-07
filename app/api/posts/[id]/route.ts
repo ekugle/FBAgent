@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, updatePostStatus } from "@/lib/supabase";
-import { runAgent } from "@/lib/agent";
+import { publishPost, schedulePost } from "@/lib/facebook";
 import { z } from "zod";
 
 const PatchSchema = z.object({
@@ -92,40 +92,37 @@ export async function PATCH(
         ? null
         : (scheduled_at ?? post.scheduled_at ?? null);
 
-      const agentResult = await runAgent({
-        trigger: "publish_approved",
-        context: {
-          post_id: id,
-          content: content ?? post.content,
-          image_urls: post.image_urls,
-          scheduled_at: effectiveScheduledAt,
-        },
-      });
-
-      // If the agent failed, surface the error — don't mark post as published
-      if (!agentResult.success) {
-        return NextResponse.json(
-          { error: agentResult.error ?? "Failed to publish to Facebook", agent: agentResult },
-          { status: 500 }
-        );
-      }
+      const postContent = content ?? post.content;
+      const imageUrls = post.image_urls ?? undefined;
 
       const tenMinsFromNow = new Date(Date.now() + 10 * 60 * 1000);
       const willSchedule =
         !!effectiveScheduledAt &&
         new Date(effectiveScheduledAt) > tenMinsFromNow;
 
-      await updatePostStatus(
-        id,
-        willSchedule ? "scheduled" : "published",
-        { approved_by }
-      );
-
-      return NextResponse.json({
-        success: true,
-        agent: agentResult,
-        post_now: post_now ?? false,
-      });
+      try {
+        if (willSchedule) {
+          const scheduleTs = Math.floor(new Date(effectiveScheduledAt!).getTime() / 1000);
+          const result = await schedulePost(postContent, scheduleTs, imageUrls);
+          await updatePostStatus(id, "scheduled", {
+            approved_by,
+            fb_post_id: result.id,
+            scheduled_at: effectiveScheduledAt,
+          });
+          return NextResponse.json({ success: true, status: "scheduled", fb_post_id: result.id });
+        } else {
+          const result = await publishPost(postContent, imageUrls);
+          await updatePostStatus(id, "published", {
+            approved_by,
+            fb_post_id: result.id,
+            published_at: new Date().toISOString(),
+          });
+          return NextResponse.json({ success: true, status: "published", fb_post_id: result.id });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: message }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

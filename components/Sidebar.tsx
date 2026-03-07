@@ -11,6 +11,7 @@ import {
   Zap,
   Megaphone,
   CalendarDays,
+  Settings,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -22,6 +23,7 @@ const navigation = [
   { name: "Comments", href: "/dashboard/comments", icon: MessageSquare },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { name: "Agent Runs", href: "/dashboard/agent", icon: Bot },
+  { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
 export default function Sidebar() {

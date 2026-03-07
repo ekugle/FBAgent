@@ -4,10 +4,30 @@
  * Docs: https://developers.facebook.com/docs/graph-api
  */
 
+import { createServerClient } from "@/lib/supabase";
+
 const GRAPH_BASE = "https://graph.facebook.com/v19.0";
 
 const PAGE_ID = process.env.FACEBOOK_PAGE_ID!;
-const PAGE_TOKEN = process.env.FACEBOOK_PAGE_ACCESS_TOKEN!;
+
+/**
+ * Returns the page access token.
+ * Prefers the value stored in Supabase (set via OAuth flow), falls back to env var.
+ */
+async function getPageToken(): Promise<string> {
+  try {
+    const db = createServerClient();
+    const { data } = await db
+      .from("agent_memory")
+      .select("value")
+      .eq("key", "fb_page_token")
+      .maybeSingle();
+    if (data?.value) return data.value as string;
+  } catch {
+    // fall through to env var
+  }
+  return process.env.FACEBOOK_PAGE_ACCESS_TOKEN!;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +82,7 @@ async function graphFetch<T>(
 ): Promise<T> {
   const { params, ...init } = options;
   const url = new URL(`${GRAPH_BASE}${path}`);
-  url.searchParams.set("access_token", PAGE_TOKEN);
+  url.searchParams.set("access_token", await getPageToken());
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       url.searchParams.set(k, v);

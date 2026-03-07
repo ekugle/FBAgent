@@ -1,11 +1,10 @@
 import { createServerClient } from "@/lib/supabase";
 import { Calendar } from "lucide-react";
-import { getCurrentWeekMonday, SLOT_HOURS_CT } from "@/lib/content-generator";
+import { getCurrentWeekMonday, SLOT_LABELS } from "@/lib/post-schedule";
 import CalendarControls from "@/components/CalendarControls";
 import UrlManager from "@/components/UrlManager";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const SLOT_LABELS = ["7:00 AM", "12:00 PM", "5:00 PM"];
 
 const STATUS_COLORS: Record<string, string> = {
   pending_approval: "bg-amber-100 text-amber-700",
@@ -25,9 +24,6 @@ const STATUS_LABELS: Record<string, string> = {
 interface Props {
   searchParams: Promise<{ week?: string }>;
 }
-
-// Suppress unused import warning for SLOT_HOURS_CT (used implicitly via slotToUtcISO)
-void SLOT_HOURS_CT;
 
 export default async function CalendarPage({ searchParams }: Props) {
   const { week } = await searchParams;

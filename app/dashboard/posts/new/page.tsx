@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Bot, ArrowLeft, Send, Zap } from "lucide-react";
 import Link from "next/link";
-import { HUSTLE_BUSINESSES, WORD_POST_ANGLES } from "@/lib/content-generator";
+import { HUSTLE_BUSINESSES, WORD_POST_ANGLES } from "@/lib/post-schedule";
 
 interface UrlRow {
   id: string;
@@ -23,7 +23,7 @@ export default function NewPostPage() {
 
   // AI generation state
   const [postType, setPostType] = useState<"hustle" | "word">("hustle");
-  const [business, setBusiness] = useState(HUSTLE_BUSINESSES[0]);
+  const [business, setBusiness] = useState<string>(HUSTLE_BUSINESSES[0]);
   const [selectedUrl, setSelectedUrl] = useState("");
   const [selectedUrlLabel, setSelectedUrlLabel] = useState("");
   const [angle, setAngle] = useState<"pain_point" | "aspirational" | "feature">("pain_point");

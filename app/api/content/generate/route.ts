@@ -8,9 +8,11 @@ import { createServerClient } from "@/lib/supabase";
 import {
   generateHustlePost,
   generateWordPost,
+} from "@/lib/content-generator";
+import {
   WordPostAngle,
   WORD_POST_ANGLES,
-} from "@/lib/content-generator";
+} from "@/lib/post-schedule";
 import { z } from "zod";
 
 const Schema = z.discriminatedUnion("post_type", [

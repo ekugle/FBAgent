@@ -7,14 +7,16 @@
 import { NextResponse } from "next/server";
 import { createServerClient, getAgentMemory, setAgentMemory } from "@/lib/supabase";
 import {
-  buildTypeSequence,
-  buildWeekPlan,
   generateHustlePost,
   generateWordPost,
+} from "@/lib/content-generator";
+import {
+  buildTypeSequence,
+  buildWeekPlan,
   getCurrentWeekMonday,
   slotToUtcISO,
   SlotPlan,
-} from "@/lib/content-generator";
+} from "@/lib/post-schedule";
 
 // Allow up to 5 minutes on Vercel (21 Claude calls can take ~60s total)
 export const maxDuration = 300;

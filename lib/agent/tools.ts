@@ -8,12 +8,6 @@ import {
   updatePostStatus,
 } from "@/lib/supabase";
 import { publishPost, schedulePost, getPagePosts } from "@/lib/publer";
-import {
-  getPageInsights,
-  getPostInsights,
-  replyToComment,
-  hideComment,
-} from "@/lib/facebook";
 
 // ─── Tool definitions (schema for Claude) ─────────────────────────────────────
 
@@ -139,115 +133,6 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
-  {
-    name: "fetch_live_page_insights",
-    description:
-      "Fetch real-time page insights directly from the Meta Graph API for a date range. Use for fresh analytics data.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        since_date: {
-          type: "string",
-          description: "Start date in YYYY-MM-DD format",
-        },
-        until_date: {
-          type: "string",
-          description: "End date in YYYY-MM-DD format",
-        },
-      },
-      required: ["since_date", "until_date"],
-    },
-  },
-  {
-    name: "draft_comment_response",
-    description:
-      "Draft a response to a Facebook comment. The response will be saved for human approval before being posted. Also performs sentiment analysis on the comment.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        comment_id: {
-          type: "string",
-          description: "Internal Supabase comment UUID",
-        },
-        fb_comment_id: {
-          type: "string",
-          description: "Facebook comment ID",
-        },
-        commenter_name: {
-          type: "string",
-          description: "Name of the person who commented",
-        },
-        comment_text: {
-          type: "string",
-          description: "The comment text to respond to",
-        },
-        draft_response: {
-          type: "string",
-          description: "Your drafted response to the comment",
-        },
-        sentiment: {
-          type: "string",
-          enum: ["positive", "neutral", "negative"],
-          description: "Your sentiment analysis of the comment",
-        },
-        should_hide: {
-          type: "boolean",
-          description:
-            "Set to true if comment should be hidden (spam, harassment, etc.) instead of responded to",
-        },
-        reasoning: {
-          type: "string",
-          description: "Your reasoning for this response approach",
-        },
-      },
-      required: [
-        "comment_id",
-        "fb_comment_id",
-        "comment_text",
-        "draft_response",
-        "sentiment",
-        "reasoning",
-      ],
-    },
-  },
-  {
-    name: "publish_comment_reply",
-    description:
-      "Post an approved reply to a Facebook comment. Only call this after human approval.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        fb_comment_id: {
-          type: "string",
-          description: "Facebook comment ID to reply to",
-        },
-        response_text: {
-          type: "string",
-          description: "The approved response text",
-        },
-        should_hide_comment: {
-          type: "boolean",
-          description: "Whether to hide the original comment after replying",
-        },
-      },
-      required: ["fb_comment_id", "response_text"],
-    },
-  },
-  {
-    name: "get_post_performance",
-    description:
-      "Fetch performance metrics for a specific published post from the Meta Graph API.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        fb_post_id: {
-          type: "string",
-          description: "The Facebook post ID (format: PAGE_ID_POST_ID)",
-        },
-      },
-      required: ["fb_post_id"],
-    },
-  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
@@ -335,71 +220,6 @@ export async function executeTool(
           (toolInput.limit as number | undefined) ?? 10
         );
         return { success: true, data: posts };
-      }
-
-      case "fetch_live_page_insights": {
-        const since = new Date(toolInput.since_date as string);
-        const until = new Date(toolInput.until_date as string);
-        const insights = await getPageInsights(since, until);
-        return { success: true, data: insights };
-      }
-
-      case "draft_comment_response": {
-        // Import dynamically to avoid circular deps
-        const { createServerClient } = await import("@/lib/supabase");
-        const db = createServerClient();
-
-        // Update comment sentiment
-        await db
-          .from("comments")
-          .update({ sentiment: toolInput.sentiment as string })
-          .eq("id", toolInput.comment_id as string);
-
-        // Create the response draft
-        const { data: response, error } = await db
-          .from("comment_responses")
-          .insert({
-            comment_id: toolInput.comment_id as string,
-            draft_response: toolInput.draft_response as string,
-            status: "pending_approval",
-            agent_reasoning: toolInput.reasoning as string,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        return {
-          success: true,
-          data: {
-            response_id: response.id,
-            sentiment: toolInput.sentiment,
-            should_hide: toolInput.should_hide ?? false,
-          },
-        };
-      }
-
-      case "publish_comment_reply": {
-        const fbCommentId = toolInput.fb_comment_id as string;
-        const responseText = toolInput.response_text as string;
-        const shouldHide = toolInput.should_hide_comment as boolean | undefined;
-
-        const result = await replyToComment(fbCommentId, responseText);
-
-        if (shouldHide) {
-          await hideComment(fbCommentId);
-        }
-
-        return {
-          success: true,
-          data: { fb_reply_id: result.id, hidden: shouldHide ?? false },
-        };
-      }
-
-      case "get_post_performance": {
-        const insights = await getPostInsights(
-          toolInput.fb_post_id as string
-        );
-        return { success: true, data: insights };
       }
 
       default:

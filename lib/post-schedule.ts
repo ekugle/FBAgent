@@ -45,8 +45,8 @@ export interface SlotPlan {
 // ─── Schedule helpers ─────────────────────────────────────────────────────────
 
 /** Posting hours in Central Time (24h) */
-export const SLOT_HOURS_CT = [7, 12, 17] as const;
-export const SLOT_LABELS = ["7:00 AM", "12:00 PM", "5:00 PM"] as const;
+export const SLOT_HOURS_CT = [7, 12, 18] as const;
+export const SLOT_LABELS = ["7:00 AM", "12:00 PM", "6:00 PM"] as const;
 
 /**
  * Convert a CT slot on a given Monday into a UTC ISO string.

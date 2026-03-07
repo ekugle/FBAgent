@@ -120,7 +120,7 @@ export async function publishPost(
     method: "POST",
     body: JSON.stringify({
       bulk: {
-        state: "published",
+        state: "now",
         posts: [
           {
             networks: { facebook: facebookPost },

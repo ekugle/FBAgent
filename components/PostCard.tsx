@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   Send,
+  Zap,
   Trash2,
   Bot,
   ImageIcon,
@@ -74,7 +75,7 @@ export default function PostCard({ post }: PostCardProps) {
   const canReject = currentStatus === "pending_approval";
   const canEdit = currentStatus !== "published";
 
-  async function handleApprove() {
+  async function handleApprove(postNow = false) {
     setLoading(true);
     setError(null);
     try {
@@ -85,11 +86,18 @@ export default function PostCard({ post }: PostCardProps) {
           action: "approve",
           content: editedContent,
           approved_by: "admin",
+          post_now: postNow,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to approve");
-      setCurrentStatus(post.scheduled_at ? "scheduled" : "published");
+      // Optimistic status: post_now → always published; otherwise check scheduled_at
+      const tenMinsFromNow = new Date(Date.now() + 10 * 60 * 1000);
+      const willSchedule =
+        !postNow &&
+        !!post.scheduled_at &&
+        new Date(post.scheduled_at) > tenMinsFromNow;
+      setCurrentStatus(willSchedule ? "scheduled" : "published");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error approving post");
     } finally {
@@ -344,14 +352,26 @@ export default function PostCard({ post }: PostCardProps) {
       {(canApprove || canReject || ["draft", "rejected"].includes(currentStatus)) && !editMode && (
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 flex-wrap">
           {canApprove && (
-            <button
-              onClick={handleApprove}
-              disabled={loading}
-              className="btn-success"
-            >
-              <Send className="w-4 h-4" />
-              {loading ? "Publishing..." : "Approve & Publish"}
-            </button>
+            <>
+              <button
+                onClick={() => handleApprove(false)}
+                disabled={loading}
+                className="btn-success"
+                title={post.scheduled_at ? `Schedule for ${new Date(post.scheduled_at).toLocaleString()}` : "Approve & publish immediately"}
+              >
+                <Send className="w-4 h-4" />
+                {loading ? "Working..." : post.scheduled_at ? "Approve & Schedule" : "Approve & Publish"}
+              </button>
+              <button
+                onClick={() => handleApprove(true)}
+                disabled={loading}
+                className="btn-primary"
+                title="Publish to Facebook right now, ignoring scheduled time"
+              >
+                <Zap className="w-4 h-4" />
+                Post Now
+              </button>
+            </>
           )}
 
           {canReject && (

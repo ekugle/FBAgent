@@ -15,6 +15,7 @@ const PatchSchema = z.object({
   rejected_reason: z.string().optional(),
   content: z.string().optional(),
   scheduled_at: z.string().datetime().nullish(),
+  post_now: z.boolean().optional(),
 });
 
 export async function GET(
@@ -52,7 +53,7 @@ export async function PATCH(
       );
     }
 
-    const { action, approved_by, rejected_reason, content, scheduled_at } =
+    const { action, approved_by, rejected_reason, content, scheduled_at, post_now } =
       parsed.data;
 
     const db = createServerClient();
@@ -86,26 +87,38 @@ export async function PATCH(
     }
 
     if (action === "approve") {
-      // Trigger the agent to publish the approved post
+      // post_now=true forces immediate publish regardless of scheduled_at
+      const effectiveScheduledAt = post_now
+        ? null
+        : (scheduled_at ?? post.scheduled_at ?? null);
+
       const agentResult = await runAgent({
         trigger: "publish_approved",
         context: {
           post_id: id,
           content: content ?? post.content,
           image_urls: post.image_urls,
-          scheduled_at: scheduled_at ?? post.scheduled_at,
+          scheduled_at: effectiveScheduledAt,
         },
       });
 
+      // Determine final status: agent/tools.ts decides schedule vs publish,
+      // but we optimistically set the DB status here to match.
+      const tenMinsFromNow = new Date(Date.now() + 10 * 60 * 1000);
+      const willSchedule =
+        !!effectiveScheduledAt &&
+        new Date(effectiveScheduledAt) > tenMinsFromNow;
+
       await updatePostStatus(
         id,
-        scheduled_at ? "scheduled" : "published",
+        willSchedule ? "scheduled" : "published",
         { approved_by }
       );
 
       return NextResponse.json({
         success: true,
         agent: agentResult,
+        post_now: post_now ?? false,
       });
     }
 

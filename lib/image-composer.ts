@@ -10,8 +10,8 @@ const SEPARATOR_X = LOGO_AREA_WIDTH + 20;
 const TEXT_X = SEPARATOR_X + 30;
 
 const FONT_FILE = path.join(
-  path.dirname(require.resolve("@fontsource/inter/package.json")),
-  "files/inter-latin-700-normal.woff"
+  process.cwd(),
+  "node_modules/@fontsource/inter/files/inter-latin-700-normal.woff"
 );
 const LOGO_PATH = path.join(process.cwd(), "public", "tx2pay-logo-white.png");
 

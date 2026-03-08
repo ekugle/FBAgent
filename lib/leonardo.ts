@@ -47,8 +47,6 @@ export async function generateImage(prompt: string): Promise<string> {
       width: 1024,
       height: 1024,
       ultra: false,
-      photoReal: true,
-      photoRealVersion: "v2",
     }),
   });
 

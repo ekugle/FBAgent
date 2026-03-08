@@ -104,16 +104,19 @@ export async function publishPost(
   message: string,
   imageUrls?: string[]
 ): Promise<PublishResult> {
-  const facebookPost: Record<string, unknown> = {
-    type: "status",
-    text: message,
+  const post: Record<string, unknown> = {
+    networks: {
+      facebook: {
+        type: "status",
+        text: message,
+      },
+    },
+    accounts: [{ id: process.env.PUBLER_FACEBOOK_ACCOUNT_ID! }],
   };
 
-  // Publer accepts an array of media objects with URLs for image attachments.
-  // If you're uploading local files, use POST /api/v1/media first and pass the
-  // returned media IDs here instead.
+  // Media lives at the post level, not inside networks.facebook
   if (imageUrls && imageUrls.length > 0) {
-    facebookPost.media = imageUrls.map((url) => ({ url }));
+    post.media = imageUrls.map((url) => ({ url, type: "IMAGE" }));
   }
 
   const response = await publerFetch<PublerJobResponse>("/posts/schedule/publish", {
@@ -121,12 +124,7 @@ export async function publishPost(
     body: JSON.stringify({
       bulk: {
         state: "scheduled",
-        posts: [
-          {
-            networks: { facebook: facebookPost },
-            accounts: [{ id: process.env.PUBLER_FACEBOOK_ACCOUNT_ID! }],
-          },
-        ],
+        posts: [post],
       },
     }),
   });
@@ -145,13 +143,24 @@ export async function schedulePost(
   scheduledAt: string, // ISO 8601 datetime string
   imageUrls?: string[]
 ): Promise<ScheduledPostResult> {
-  const facebookPost: Record<string, unknown> = {
-    type: "status",
-    text: message,
+  const post: Record<string, unknown> = {
+    networks: {
+      facebook: {
+        type: "status",
+        text: message,
+      },
+    },
+    accounts: [
+      {
+        id: process.env.PUBLER_FACEBOOK_ACCOUNT_ID!,
+        scheduled_at: scheduledAt,
+      },
+    ],
   };
 
+  // Media lives at the post level, not inside networks.facebook
   if (imageUrls && imageUrls.length > 0) {
-    facebookPost.media = imageUrls.map((url) => ({ url }));
+    post.media = imageUrls.map((url) => ({ url, type: "IMAGE" }));
   }
 
   const response = await publerFetch<PublerJobResponse>("/posts/schedule", {
@@ -159,17 +168,7 @@ export async function schedulePost(
     body: JSON.stringify({
       bulk: {
         state: "scheduled",
-        posts: [
-          {
-            networks: { facebook: facebookPost },
-            accounts: [
-              {
-                id: process.env.PUBLER_FACEBOOK_ACCOUNT_ID!,
-                scheduled_at: scheduledAt,
-              },
-            ],
-          },
-        ],
+        posts: [post],
       },
     }),
   });

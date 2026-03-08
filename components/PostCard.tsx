@@ -64,6 +64,8 @@ export default function PostCard({ post }: PostCardProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(post.image_urls?.[0] ?? null);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   /** Convert UTC ISO string → "YYYY-MM-DDTHH:mm" in browser local time for datetime-local input */
   function toDatetimeLocal(iso: string): string {
@@ -185,6 +187,23 @@ export default function PostCard({ post }: PostCardProps) {
     }
   }
 
+  async function handleGenerateVideo() {
+    setGeneratingVideo(true);
+    setVideoError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/generate-video`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Video generation failed");
+      setImageUrl(data.video_url); // reuse imageUrl state for the stored URL
+    } catch (err) {
+      setVideoError(err instanceof Error ? err.message : "Error generating video");
+    } finally {
+      setGeneratingVideo(false);
+    }
+  }
+
   return (
     <div
       className={clsx(
@@ -221,6 +240,11 @@ export default function PostCard({ post }: PostCardProps) {
           {(post.metadata as Record<string, unknown>)?.post_type === "image" && (
             <span className="badge bg-emerald-100 text-emerald-700">
               🎨 Image Post
+            </span>
+          )}
+          {(post.metadata as Record<string, unknown>)?.post_type === "reel" && (
+            <span className="badge bg-pink-100 text-pink-700">
+              🎬 Reel Video
             </span>
           )}
           {post.scheduled_at && (
@@ -378,6 +402,64 @@ export default function PostCard({ post }: PostCardProps) {
               />
               <p className="text-xs text-purple-500 mt-1">
                 Image will be attached when this post is published.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Leonardo Reel video generation */}
+      {(post.metadata as Record<string, unknown>)?.post_type === "reel" && (
+        <div className="mt-3 border border-pink-100 rounded-lg p-3 bg-pink-50/50">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1 text-xs text-pink-700 font-medium">
+              🎬 Leonardo Motion SVD — ~4 sec Reel
+            </span>
+            <button
+              onClick={handleGenerateVideo}
+              disabled={generatingVideo}
+              className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-60 transition-colors"
+            >
+              {generatingVideo ? (
+                <>
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  Generating… (up to 5 min)
+                </>
+              ) : imageUrl ? (
+                <>
+                  <RefreshCw className="w-3 h-3" />
+                  Regenerate Video
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-3 h-3" />
+                  Generate Reel Video
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="mt-1 text-xs text-pink-600">
+            Prompt: <span className="italic">{String((post.metadata as Record<string, unknown>).video_prompt ?? "")}</span>
+            {" · "}Motion: <strong>{String((post.metadata as Record<string, unknown>).motion_strength ?? 5)}/10</strong>
+          </div>
+
+          {videoError && (
+            <p className="mt-2 text-xs text-red-600">{videoError}</p>
+          )}
+
+          {imageUrl && !generatingVideo && (
+            <div className="mt-3">
+              <video
+                src={imageUrl}
+                controls
+                loop
+                muted
+                playsInline
+                className="rounded-lg w-full max-w-sm border border-pink-200"
+              />
+              <p className="text-xs text-pink-500 mt-1">
+                Video will be published as a Facebook Reel.
               </p>
             </div>
           )}

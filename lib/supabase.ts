@@ -277,3 +277,20 @@ export async function uploadImageToStorage(
   const { data } = db.storage.from("post-images").getPublicUrl(filename);
   return data.publicUrl;
 }
+
+/**
+ * Uploads a video buffer (MP4) to Supabase Storage (post-images bucket) and
+ * returns the public URL.
+ */
+export async function uploadVideoToStorage(
+  buffer: Buffer,
+  filename: string
+): Promise<string> {
+  const db = createServerClient();
+  const { error } = await db.storage
+    .from("post-images")
+    .upload(filename, buffer, { contentType: "video/mp4", upsert: true });
+  if (error) throw error;
+  const { data } = db.storage.from("post-images").getPublicUrl(filename);
+  return data.publicUrl;
+}

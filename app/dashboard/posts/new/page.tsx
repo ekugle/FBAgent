@@ -22,7 +22,7 @@ export default function NewPostPage() {
   const [error, setError] = useState<string | null>(null);
 
   // AI generation state
-  const [postType, setPostType] = useState<"hustle" | "word" | "image">("hustle");
+  const [postType, setPostType] = useState<"hustle" | "word" | "image" | "reel">("hustle");
   const [business, setBusiness] = useState<string>(HUSTLE_BUSINESSES[0]);
   const [selectedUrl, setSelectedUrl] = useState("");
   const [selectedUrlLabel, setSelectedUrlLabel] = useState("");
@@ -34,6 +34,10 @@ export default function NewPostPage() {
   const [imagePrompt, setImagePrompt] = useState("");
   const [bannerCaption, setBannerCaption] = useState("You Do The Hustle, We Get You Paid");
   const [imagePostContent, setImagePostContent] = useState("");
+  // Reel video post state
+  const [videoPrompt, setVideoPrompt] = useState("");
+  const [motionStrength, setMotionStrength] = useState(5);
+  const [reelContent, setReelContent] = useState("");
 
   const charCount = content.length;
   const charColor =
@@ -92,6 +96,23 @@ export default function NewPostPage() {
               post_type: "image",
               image_prompt: imagePrompt,
               banner_caption: bannerCaption,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to create post");
+      } else if (postType === "reel") {
+        // Reel posts go to /api/posts with video metadata
+        const res = await fetch("/api/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: reelContent,
+            scheduled_at: scheduledAt || undefined,
+            metadata: {
+              post_type: "reel",
+              video_prompt: videoPrompt,
+              motion_strength: motionStrength,
             },
           }),
         });
@@ -176,6 +197,16 @@ export default function NewPostPage() {
             }`}
           >
             🎨 Image Post
+          </button>
+          <button
+            onClick={() => setPostType("reel")}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+              postType === "reel"
+                ? "bg-pink-600 border-pink-600 text-white"
+                : "bg-white border-gray-200 text-gray-600 hover:border-pink-300"
+            }`}
+          >
+            🎬 Reel Video
           </button>
         </div>
 
@@ -293,6 +324,56 @@ export default function NewPostPage() {
           </div>
         )}
 
+        {/* Reel video options */}
+        {postType === "reel" && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-purple-800 mb-1">
+                Video Prompt <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={videoPrompt}
+                onChange={(e) => setVideoPrompt(e.target.value)}
+                rows={3}
+                placeholder="Describe the scene to generate and animate with Leonardo AI…"
+                className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-purple-400 focus:border-transparent resize-none"
+              />
+              <p className="text-xs text-purple-600 mt-1">
+                Leonardo generates a 16:9 image then animates it into a ~4 second MP4 Reel.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-purple-800 mb-1">
+                Motion Strength: <strong>{motionStrength}</strong>
+              </label>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                value={motionStrength}
+                onChange={(e) => setMotionStrength(Number(e.target.value))}
+                className="w-full accent-pink-600"
+              />
+              <div className="flex justify-between text-xs text-purple-500">
+                <span>1 — subtle</span>
+                <span>10 — dramatic</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-purple-800 mb-1">
+                Post Caption <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={reelContent}
+                onChange={(e) => setReelContent(e.target.value)}
+                rows={4}
+                placeholder="Write the Facebook Reel caption…"
+                className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-purple-400 focus:border-transparent resize-none"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Optional schedule time */}
         <div className="mt-3">
           <label className="block text-xs font-medium text-purple-800 mb-1">
@@ -315,13 +396,17 @@ export default function NewPostPage() {
 
         <button
           onClick={handleGenerate}
-          disabled={genLoading || (postType === "image" && (!imagePrompt.trim() || !imagePostContent.trim()))}
+          disabled={
+            genLoading ||
+            (postType === "image" && (!imagePrompt.trim() || !imagePostContent.trim())) ||
+            (postType === "reel" && (!videoPrompt.trim() || !reelContent.trim()))
+          }
           className="mt-4 btn-primary bg-purple-600 hover:bg-purple-700 w-full justify-center"
         >
           <Zap className="w-4 h-4" />
           {genLoading
-            ? postType === "image" ? "Creating…" : "Generating…"
-            : postType === "image" ? "Add to Approval Queue" : "Generate & Add to Approval Queue"}
+            ? (postType === "image" || postType === "reel") ? "Creating…" : "Generating…"
+            : (postType === "image" || postType === "reel") ? "Add to Approval Queue" : "Generate & Add to Approval Queue"}
         </button>
       </div>
 

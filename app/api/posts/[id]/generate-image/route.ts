@@ -42,7 +42,7 @@ export async function POST(
     const leonardoUrl = await generateImage(imagePrompt);
 
     // 2. Composite the TX2Pay branding strip onto the image
-    const brandedBuffer = await composeBrandedImage(leonardoUrl);
+    const brandedBuffer = await composeBrandedImage(leonardoUrl, "You Do The Hustle, We Get You Paid");
 
     // 3. Upload branded image to Supabase Storage for a permanent URL
     const filename = `posts/${id}-${Date.now()}.jpg`;

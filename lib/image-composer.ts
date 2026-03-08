@@ -24,7 +24,7 @@ function getFont(): Buffer {
 
 export async function composeBrandedImage(
   leonardoUrl: string,
-  slogan = "Get Paid Faster"
+  slogan = "You Do The Hustle, We Get You Paid"
 ): Promise<Buffer> {
   const imgRes = await fetch(leonardoUrl);
   if (!imgRes.ok) throw new Error(`Failed to download image (${imgRes.status})`);

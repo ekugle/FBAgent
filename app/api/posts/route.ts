@@ -12,6 +12,7 @@ const CreatePostSchema = z.object({
   content: z.string().min(1).max(63206),
   image_urls: z.array(z.string().url()).optional(),
   scheduled_at: z.string().datetime().optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 export async function GET(req: NextRequest) {

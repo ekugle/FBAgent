@@ -27,8 +27,9 @@ export async function POST(
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
-  const imagePrompt = (post.metadata as Record<string, unknown>)
-    ?.image_prompt as string | undefined;
+  const meta = post.metadata as Record<string, unknown>;
+  const imagePrompt = meta?.image_prompt as string | undefined;
+  const bannerCaption = (meta?.banner_caption as string | undefined) ?? "You Do The Hustle, We Get You Paid";
 
   if (!imagePrompt) {
     return NextResponse.json(
@@ -42,7 +43,7 @@ export async function POST(
     const leonardoUrl = await generateImage(imagePrompt);
 
     // 2. Composite the TX2Pay branding strip onto the image
-    const brandedBuffer = await composeBrandedImage(leonardoUrl, "You Do The Hustle, We Get You Paid");
+    const brandedBuffer = await composeBrandedImage(leonardoUrl, bannerCaption);
 
     // 3. Upload branded image to Supabase Storage for a permanent URL
     const filename = `posts/${id}-${Date.now()}.jpg`;

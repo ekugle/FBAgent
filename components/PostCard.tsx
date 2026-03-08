@@ -218,6 +218,11 @@ export default function PostCard({ post }: PostCardProps) {
               🔗 Word Post
             </span>
           )}
+          {(post.metadata as Record<string, unknown>)?.post_type === "image" && (
+            <span className="badge bg-emerald-100 text-emerald-700">
+              🎨 Image Post
+            </span>
+          )}
           {post.scheduled_at && (
             <span className="text-xs text-blue-600">
               Scheduled: {new Date(post.scheduled_at).toLocaleString()}

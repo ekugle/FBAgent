@@ -22,7 +22,7 @@ export default function NewPostPage() {
   const [error, setError] = useState<string | null>(null);
 
   // AI generation state
-  const [postType, setPostType] = useState<"hustle" | "word">("hustle");
+  const [postType, setPostType] = useState<"hustle" | "word" | "image">("hustle");
   const [business, setBusiness] = useState<string>(HUSTLE_BUSINESSES[0]);
   const [selectedUrl, setSelectedUrl] = useState("");
   const [selectedUrlLabel, setSelectedUrlLabel] = useState("");
@@ -30,6 +30,10 @@ export default function NewPostPage() {
   const [urls, setUrls] = useState<UrlRow[]>([]);
   const [genLoading, setGenLoading] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // Image post state
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [bannerCaption, setBannerCaption] = useState("You Do The Hustle, We Get You Paid");
+  const [imagePostContent, setImagePostContent] = useState("");
 
   const charCount = content.length;
   const charColor =
@@ -76,24 +80,42 @@ export default function NewPostPage() {
     setGenLoading(true);
     setGenError(null);
     try {
-      const body =
-        postType === "hustle"
-          ? { post_type: "hustle", business, scheduled_at: scheduledAt || undefined }
-          : {
-              post_type: "word",
-              url: selectedUrl,
-              url_label: selectedUrlLabel,
-              angle,
-              scheduled_at: scheduledAt || undefined,
-            };
-
-      const res = await fetch("/api/content/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Generation failed");
+      if (postType === "image") {
+        // Image posts go directly to /api/posts with metadata
+        const res = await fetch("/api/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: imagePostContent,
+            scheduled_at: scheduledAt || undefined,
+            metadata: {
+              post_type: "image",
+              image_prompt: imagePrompt,
+              banner_caption: bannerCaption,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to create post");
+      } else {
+        const body =
+          postType === "hustle"
+            ? { post_type: "hustle", business, scheduled_at: scheduledAt || undefined }
+            : {
+                post_type: "word",
+                url: selectedUrl,
+                url_label: selectedUrlLabel,
+                angle,
+                scheduled_at: scheduledAt || undefined,
+              };
+        const res = await fetch("/api/content/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Generation failed");
+      }
       router.push("/dashboard/posts?status=pending_approval");
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "Generation error");
@@ -144,6 +166,16 @@ export default function NewPostPage() {
             }`}
           >
             🔗 Word Post
+          </button>
+          <button
+            onClick={() => setPostType("image")}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-colors ${
+              postType === "image"
+                ? "bg-emerald-600 border-emerald-600 text-white"
+                : "bg-white border-gray-200 text-gray-600 hover:border-emerald-300"
+            }`}
+          >
+            🎨 Image Post
           </button>
         </div>
 
@@ -216,6 +248,51 @@ export default function NewPostPage() {
           </div>
         )}
 
+        {/* Image post options */}
+        {postType === "image" && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-purple-800 mb-1">
+                Image Prompt <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={imagePrompt}
+                onChange={(e) => setImagePrompt(e.target.value)}
+                rows={3}
+                placeholder="Describe the image to generate with Leonardo AI…"
+                className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-purple-400 focus:border-transparent resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-purple-800 mb-1">
+                Banner Caption
+              </label>
+              <input
+                type="text"
+                value={bannerCaption}
+                onChange={(e) => setBannerCaption(e.target.value)}
+                placeholder="You Do The Hustle, We Get You Paid"
+                className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+              />
+              <p className="text-xs text-purple-600 mt-1">
+                Text shown in the TX2Pay branded strip at the bottom of the image.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-purple-800 mb-1">
+                Post Content <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={imagePostContent}
+                onChange={(e) => setImagePostContent(e.target.value)}
+                rows={4}
+                placeholder="Write the Facebook post caption…"
+                className="w-full text-sm border border-purple-200 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-purple-400 focus:border-transparent resize-none"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Optional schedule time */}
         <div className="mt-3">
           <label className="block text-xs font-medium text-purple-800 mb-1">
@@ -238,11 +315,13 @@ export default function NewPostPage() {
 
         <button
           onClick={handleGenerate}
-          disabled={genLoading}
+          disabled={genLoading || (postType === "image" && (!imagePrompt.trim() || !imagePostContent.trim()))}
           className="mt-4 btn-primary bg-purple-600 hover:bg-purple-700 w-full justify-center"
         >
           <Zap className="w-4 h-4" />
-          {genLoading ? "Generating…" : "Generate & Add to Approval Queue"}
+          {genLoading
+            ? postType === "image" ? "Creating…" : "Generating…"
+            : postType === "image" ? "Add to Approval Queue" : "Generate & Add to Approval Queue"}
         </button>
       </div>
 

@@ -32,11 +32,13 @@ interface GenerationStatusResponse {
   };
 }
 
-interface MotionGenerationResponse {
-  motionSvdGenerationJob: {
+interface VideoGenerationResponse {
+  motionVideoGenerationJob: {
     generationId: string;
   };
 }
+
+export type VideoQuality = "MOTION2FAST" | "MOTION2";
 
 /**
  * Generate an image from a text prompt. Returns the URL and the Leonardo
@@ -104,40 +106,52 @@ export async function generateImage(prompt: string): Promise<string> {
   return url;
 }
 
+interface GenerationStatusWithVideoResponse {
+  generations_by_pk: {
+    status: "PENDING" | "PROCESSING" | "COMPLETE" | "FAILED";
+    generated_images: Array<{ url: string; id: string; motionMp4URL?: string }>;
+  };
+}
+
 /**
  * Animate a previously generated image into a short video using
- * Leonardo Motion SVD (Stable Video Diffusion).
+ * Leonardo Image-to-Video (MOTION2FAST by default for cost efficiency).
  *
  * @param imageId  - The Leonardo image ID from a prior generateImageWithId call
- * @param motionStrength - 1–10, how much motion (default 5)
- * @returns Public URL of the generated MP4 video (~4 seconds)
+ * @param prompt   - Same prompt used for the source image (required by API)
+ * @param model    - "MOTION2FAST" (lower cost) or "MOTION2" (best quality)
+ * @returns Public URL of the generated MP4 video
  */
 export async function generateVideoFromImage(
   imageId: string,
-  motionStrength = 5
+  prompt: string,
+  model: VideoQuality = "MOTION2FAST"
 ): Promise<string> {
-  const motionRes = await fetch(`${LEONARDO_BASE}/generations-motion-svd`, {
+  const motionRes = await fetch(`${LEONARDO_BASE}/generations-image-to-video`, {
     method: "POST",
     headers: leonardoHeaders(),
     body: JSON.stringify({
       imageId,
-      motionStrength,
+      imageType: "Generated",
+      prompt,
+      model,
+      resolution: "RESOLUTION_720",
       isPublic: false,
     }),
   });
 
   if (!motionRes.ok) {
     const text = await motionRes.text();
-    throw new Error(`Leonardo Motion SVD failed (${motionRes.status}): ${text}`);
+    throw new Error(`Leonardo Image-to-Video failed (${motionRes.status}): ${text}`);
   }
 
-  const motionData = (await motionRes.json()) as MotionGenerationResponse;
-  const generationId = motionData.motionSvdGenerationJob?.generationId;
+  const motionData = (await motionRes.json()) as VideoGenerationResponse;
+  const generationId = motionData.motionVideoGenerationJob?.generationId;
   if (!generationId) {
-    throw new Error("Leonardo Motion API returned no generationId");
+    throw new Error("Leonardo Video API returned no generationId");
   }
 
-  // Poll until the video is ready (videos take longer — up to 5 minutes)
+  // Poll until the video is ready (up to 5 minutes)
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 5000));
 
@@ -147,19 +161,19 @@ export async function generateVideoFromImage(
     );
     if (!statusRes.ok) continue;
 
-    const statusData = (await statusRes.json()) as GenerationStatusResponse;
+    const statusData = (await statusRes.json()) as GenerationStatusWithVideoResponse;
     const gen = statusData.generations_by_pk;
 
     if (gen?.status === "COMPLETE") {
-      const videoUrl = gen.generated_videos?.[0]?.url;
-      if (!videoUrl) throw new Error("Leonardo Motion complete but no video URL");
+      const videoUrl = gen.generated_images?.[0]?.motionMp4URL;
+      if (!videoUrl) throw new Error("Leonardo Video complete but no MP4 URL");
       return videoUrl;
     }
     if (gen?.status === "FAILED") {
-      throw new Error("Leonardo Motion generation failed");
+      throw new Error("Leonardo Video generation failed");
     }
   }
 
-  throw new Error("Leonardo Motion generation timed out after 5 minutes");
+  throw new Error("Leonardo Video generation timed out after 5 minutes");
 }
 

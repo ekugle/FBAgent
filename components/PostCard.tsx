@@ -441,7 +441,7 @@ export default function PostCard({ post }: PostCardProps) {
 
           <div className="mt-1 text-xs text-pink-600">
             Prompt: <span className="italic">{String((post.metadata as Record<string, unknown>).video_prompt ?? "")}</span>
-            {" · "}Motion: <strong>{String((post.metadata as Record<string, unknown>).motion_strength ?? 5)}/10</strong>
+            {" · "}Model: <strong>{String((post.metadata as Record<string, unknown>).video_quality ?? "MOTION2FAST")}</strong>
           </div>
 
           {videoError && (

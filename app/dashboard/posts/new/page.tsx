@@ -36,7 +36,7 @@ export default function NewPostPage() {
   const [imagePostContent, setImagePostContent] = useState("");
   // Reel video post state
   const [videoPrompt, setVideoPrompt] = useState("");
-  const [motionStrength, setMotionStrength] = useState(5);
+  const [videoQuality, setVideoQuality] = useState<"MOTION2FAST" | "MOTION2">("MOTION2FAST");
   const [reelContent, setReelContent] = useState("");
 
   const charCount = content.length;
@@ -112,7 +112,7 @@ export default function NewPostPage() {
             metadata: {
               post_type: "reel",
               video_prompt: videoPrompt,
-              motion_strength: motionStrength,
+              video_quality: videoQuality,
             },
           }),
         });
@@ -344,19 +344,33 @@ export default function NewPostPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-purple-800 mb-1">
-                Motion Strength: <strong>{motionStrength}</strong>
+                Video Quality
               </label>
-              <input
-                type="range"
-                min={1}
-                max={10}
-                value={motionStrength}
-                onChange={(e) => setMotionStrength(Number(e.target.value))}
-                className="w-full accent-pink-600"
-              />
-              <div className="flex justify-between text-xs text-purple-500">
-                <span>1 — subtle</span>
-                <span>10 — dramatic</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setVideoQuality("MOTION2FAST")}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium border transition-colors ${
+                    videoQuality === "MOTION2FAST"
+                      ? "bg-pink-600 border-pink-600 text-white"
+                      : "bg-white border-gray-200 text-gray-600 hover:border-pink-300"
+                  }`}
+                >
+                  ⚡ Fast &amp; Affordable
+                  <span className="block text-[10px] opacity-75">MOTION2FAST</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVideoQuality("MOTION2")}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium border transition-colors ${
+                    videoQuality === "MOTION2"
+                      ? "bg-pink-600 border-pink-600 text-white"
+                      : "bg-white border-gray-200 text-gray-600 hover:border-pink-300"
+                  }`}
+                >
+                  ✨ Best Quality
+                  <span className="block text-[10px] opacity-75">MOTION2</span>
+                </button>
               </div>
             </div>
             <div>

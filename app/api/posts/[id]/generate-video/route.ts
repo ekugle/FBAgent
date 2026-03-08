@@ -2,14 +2,14 @@
  * POST /api/posts/[id]/generate-video
  *
  * Reads video_prompt from post metadata, calls Leonardo AI to:
- *   1. Generate a base image from the prompt
- *   2. Animate it into a short MP4 via Motion SVD
+ *   1. Generate a base image (16:9) from the prompt
+ *   2. Animate it into an MP4 via Image-to-Video (MOTION2FAST or MOTION2)
  * Then uploads the video to Supabase Storage and saves the URL.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, uploadVideoToStorage } from "@/lib/supabase";
-import { generateImageWithId, generateVideoFromImage } from "@/lib/leonardo";
+import { generateImageWithId, generateVideoFromImage, VideoQuality } from "@/lib/leonardo";
 
 export async function POST(
   _req: NextRequest,
@@ -30,7 +30,7 @@ export async function POST(
 
   const meta = post.metadata as Record<string, unknown>;
   const videoPrompt = meta?.video_prompt as string | undefined;
-  const motionStrength = (meta?.motion_strength as number | undefined) ?? 5;
+  const videoQuality = ((meta?.video_quality as string | undefined) ?? "MOTION2FAST") as VideoQuality;
 
   if (!videoPrompt) {
     return NextResponse.json(
@@ -43,8 +43,8 @@ export async function POST(
     // 1. Generate a base image (16:9 landscape) from the prompt
     const { imageId } = await generateImageWithId(videoPrompt);
 
-    // 2. Animate the image into a short video via Motion SVD
-    const leonardoVideoUrl = await generateVideoFromImage(imageId, motionStrength);
+    // 2. Animate the image using Image-to-Video
+    const leonardoVideoUrl = await generateVideoFromImage(imageId, videoPrompt, videoQuality);
 
     // 3. Download the video from Leonardo (temporary URL)
     const videoRes = await fetch(leonardoVideoUrl);

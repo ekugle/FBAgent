@@ -72,17 +72,14 @@ export async function composeBrandedImage(
 
   // 3. Slogan — rendered by Pango with bundled font, negated to white
   const textWidth = width - TEXT_X - 20;
-  const textInput: Parameters<typeof sharp>[0] & { text: object } = {
-    text: {
-      text: slogan,
-      ...(hasFont ? { font: "Inter Bold", fontfile: FONT_PATH } : { font: "Sans Bold" }),
-      width: textWidth,
-      rgba: true,
-      dpi: TEXT_DPI,
-    },
-  };
-
-  const textBuffer = await (sharp(textInput as Parameters<typeof sharp>[0]) as sharp.Sharp)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const textBuffer = await (sharp({ text: {
+    text: slogan,
+    ...(hasFont ? { font: "Inter Bold", fontfile: FONT_PATH } : { font: "Sans Bold" }),
+    width: textWidth,
+    rgba: true,
+    dpi: TEXT_DPI,
+  } } as any) as sharp.Sharp)
     .negate({ alpha: false }) // black text on transparent → white text on transparent
     .png()
     .toBuffer();

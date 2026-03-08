@@ -1,44 +1,34 @@
 /**
  * Composes a branded TX2Pay strip onto a Leonardo-generated image.
  *
- * The bottom strip contains:
- *   - TX2Pay logo (white PNG) if present at public/tx2pay-logo-white.png
- *   - Vertical separator
- *   - Slogan text
+ * Bottom strip layout:
+ *   [TX2Pay logo] | [Slogan — large, bold, eye-catching]
  *
- * The composited image is returned as a JPEG Buffer ready to upload to storage.
+ * Text is rendered via Sharp's native Pango engine (not SVG) with a bundled
+ * Inter font to guarantee legibility on Vercel serverless (no system fonts).
  */
 
 import sharp from "sharp";
 import path from "path";
 import fs from "fs";
 
-const STRIP_HEIGHT = 110; // px — height of the bottom branding bar
+const STRIP_HEIGHT = 130; // px — taller bar for bigger text
 const BRAND_NAVY = "#172554"; // TX2Pay dark navy
+const LOGO_AREA_WIDTH = 220; // px — space reserved for the logo on the left
+const SEPARATOR_X = LOGO_AREA_WIDTH + 20;
+const TEXT_X = SEPARATOR_X + 30;
+const FONT_SIZE = 44; // large, attention-grabbing
 
-/**
- * Load bundled Inter font as base64 for embedding in SVG.
- * This avoids missing-font issues on serverless (Vercel/Lambda) where
- * Arial/Helvetica are not available.
- */
-function getFontBase64(): string {
-  const fontPath = path.join(process.cwd(), "public", "fonts", "Inter.ttf");
-  if (!fs.existsSync(fontPath)) return "";
-  return fs.readFileSync(fontPath).toString("base64");
-}
+const FONT_PATH = path.join(process.cwd(), "public", "fonts", "Inter.ttf");
 
 /**
  * Downloads a Leonardo image, composites a branded bottom strip, and returns
  * the result as a JPEG buffer.
- *
- * @param leonardoUrl  - The image URL returned by Leonardo AI
- * @param slogan       - Short tagline displayed in the strip (default: "Get Paid Faster")
  */
 export async function composeBrandedImage(
   leonardoUrl: string,
   slogan = "Get Paid Faster"
 ): Promise<Buffer> {
-  // Download the source image
   const imgRes = await fetch(leonardoUrl);
   if (!imgRes.ok) {
     throw new Error(`Failed to download Leonardo image (${imgRes.status})`);
@@ -49,34 +39,84 @@ export async function composeBrandedImage(
   const width = meta.width ?? 1024;
   const height = meta.height ?? 1024;
 
-  // Check for white logo asset
+  const hasFont = fs.existsSync(FONT_PATH);
   const logoPath = path.join(process.cwd(), "public", "tx2pay-logo-white.png");
   const hasLogo = fs.existsSync(logoPath);
 
-  // Composites to apply in order
   const composites: sharp.OverlayOptions[] = [];
 
-  // 1. Dark navy strip (SVG with embedded font)
-  const logoAreaWidth = hasLogo ? 300 : 210;
-  const fontBase64 = getFontBase64();
-  const stripSvg = buildStripSvg(width, slogan, hasLogo, logoAreaWidth, fontBase64);
+  // 1. Navy background strip
+  const stripSvg = `<svg width="${width}" height="${STRIP_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${width}" height="${STRIP_HEIGHT}" fill="${BRAND_NAVY}"/>
+    <line x1="${SEPARATOR_X}" y1="16" x2="${SEPARATOR_X}" y2="${STRIP_HEIGHT - 16}"
+      stroke="rgba(255,255,255,0.35)" stroke-width="2"/>
+  </svg>`;
   composites.push({
     input: Buffer.from(stripSvg),
     top: height - STRIP_HEIGHT,
     left: 0,
   });
 
-  // 2. Logo PNG (if available) — scaled to fit strip height
+  // 2. Logo PNG — larger, centered vertically in the strip
   if (hasLogo) {
     const logoBuffer = await sharp(logoPath)
-      .resize({ height: STRIP_HEIGHT - 24, fit: "inside", withoutEnlargement: true })
+      .resize({ height: STRIP_HEIGHT - 20, fit: "inside", withoutEnlargement: true })
       .toBuffer();
+    const logoMeta = await sharp(logoBuffer).metadata();
+    const logoTop = height - STRIP_HEIGHT + Math.round((STRIP_HEIGHT - (logoMeta.height ?? 0)) / 2);
     composites.push({
       input: logoBuffer,
-      top: height - STRIP_HEIGHT + 12,
-      left: 28,
+      top: logoTop,
+      left: 24,
     });
+  } else {
+    // Fallback: render "TX2Pay" as Pango text if no logo file
+    if (hasFont) {
+      const fallbackText = await sharp({
+        text: {
+          text: `<span foreground="white" font_desc="Inter Bold 40">TX2Pay</span>`,
+          fontfile: FONT_PATH,
+          width: LOGO_AREA_WIDTH - 20,
+          height: STRIP_HEIGHT - 20,
+          rgba: true,
+        },
+      })
+        .png()
+        .toBuffer();
+      composites.push({
+        input: fallbackText,
+        top: height - STRIP_HEIGHT + 10,
+        left: 24,
+      });
+    }
   }
+
+  // 3. Slogan text — rendered by Pango with bundled font
+  const textWidth = width - TEXT_X - 24;
+  const textBuffer = await sharp({
+    text: {
+      text: hasFont
+        ? `<span foreground="white" font_desc="Inter Bold ${FONT_SIZE}">${escapeMarkup(slogan)}</span>`
+        : `<span foreground="white" font_desc="Sans Bold ${FONT_SIZE}">${escapeMarkup(slogan)}</span>`,
+      fontfile: hasFont ? FONT_PATH : undefined,
+      width: textWidth,
+      height: STRIP_HEIGHT - 20,
+      rgba: true,
+      align: "left",
+    },
+  })
+    .png()
+    .toBuffer();
+
+  const textMeta = await sharp(textBuffer).metadata();
+  const textTop =
+    height - STRIP_HEIGHT + Math.round((STRIP_HEIGHT - (textMeta.height ?? 0)) / 2);
+
+  composites.push({
+    input: textBuffer,
+    top: Math.max(textTop, height - STRIP_HEIGHT + 8),
+    left: TEXT_X,
+  });
 
   return sharp(imageBuffer)
     .composite(composites)
@@ -84,58 +124,12 @@ export async function composeBrandedImage(
     .toBuffer();
 }
 
-/** Builds the SVG rectangle + text overlay for the branding strip. */
-function buildStripSvg(
-  width: number,
-  slogan: string,
-  hasLogo: boolean,
-  logoAreaWidth: number,
-  fontBase64: string
-): string {
-  const separatorX = logoAreaWidth + 20;
-  const sloganX = separatorX + 28;
-  const midY = STRIP_HEIGHT / 2;
-
-  const fontFace = fontBase64
-    ? `<defs><style>@font-face{font-family:'Inter';src:url('data:font/truetype;base64,${fontBase64}');}</style></defs>`
-    : "";
-  const fontFamily = fontBase64
-    ? "Inter, sans-serif"
-    : "Liberation Sans, DejaVu Sans, sans-serif";
-
-  return `<svg width="${width}" height="${STRIP_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-  ${fontFace}
-  <rect width="${width}" height="${STRIP_HEIGHT}" fill="${BRAND_NAVY}" fill-opacity="0.93"/>
-  ${
-    !hasLogo
-      ? `<text
-           x="28"
-           y="${midY + 15}"
-           font-family="${fontFamily}"
-           font-size="42"
-           font-weight="700"
-           fill="white">TX2Pay</text>`
-      : ""
-  }
-  <line
-    x1="${separatorX}" y1="18"
-    x2="${separatorX}" y2="${STRIP_HEIGHT - 18}"
-    stroke="rgba(255,255,255,0.3)"
-    stroke-width="1.5"/>
-  <text
-    x="${sloganX}"
-    y="${midY + 9}"
-    font-family="${fontFamily}"
-    font-size="26"
-    font-weight="600"
-    fill="white">${escapeXml(slogan)}</text>
-</svg>`;
-}
-
-function escapeXml(str: string): string {
+/** Escape Pango markup special characters. */
+function escapeMarkup(str: string): string {
   return str
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

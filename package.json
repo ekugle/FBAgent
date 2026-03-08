@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",
+    "@fontsource/inter": "^5.2.8",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.1",
     "axios": "^1.8.2",
@@ -21,6 +22,7 @@
     "next": "^16.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "satori": "^0.25.0",
     "sharp": "^0.34.5",
     "tailwind-merge": "^3.0.2",
     "zod": "^3.24.2"

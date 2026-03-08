@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import satori from "satori";
 import path from "path";
 import fs from "fs";
 
@@ -7,33 +8,18 @@ const BRAND_NAVY = "#172554";
 const LOGO_AREA_WIDTH = 220;
 const SEPARATOR_X = LOGO_AREA_WIDTH + 20;
 const TEXT_X = SEPARATOR_X + 30;
-const FONT_SIZE = 36;
-const LINE_HEIGHT = FONT_SIZE * 1.25;
-// Approx chars per line at FONT_SIZE px Inter Bold in the available text width
-const CHARS_PER_LINE = 30;
 
-const FONT_PATH = path.join(process.cwd(), "public", "fonts", "Inter-Bold.ttf");
+const FONT_FILE = path.join(
+  path.dirname(require.resolve("@fontsource/inter/package.json")),
+  "files/inter-latin-700-normal.woff"
+);
 const LOGO_PATH = path.join(process.cwd(), "public", "tx2pay-logo-white.png");
 
-function escapeXml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/** Split text into lines of at most maxChars, breaking on word boundaries. */
-function wordWrap(text: string, maxChars: number): string[] {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let current = "";
-  for (const word of words) {
-    if (current && current.length + 1 + word.length > maxChars) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = current ? `${current} ${word}` : word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
+// Load font once at module level (cached on warm Lambda invocations)
+let fontData: Buffer | null = null;
+function getFont(): Buffer {
+  if (!fontData) fontData = fs.readFileSync(FONT_FILE);
+  return fontData;
 }
 
 export async function composeBrandedImage(
@@ -48,37 +34,79 @@ export async function composeBrandedImage(
   const width = meta.width ?? 1024;
   const height = meta.height ?? 1024;
 
-  // Embed font as base64 — works on Vercel Lambda (no system fonts needed)
-  const fontB64 = fs.existsSync(FONT_PATH)
-    ? fs.readFileSync(FONT_PATH).toString("base64")
-    : null;
-  const fontFace = fontB64
-    ? `@font-face{font-family:'Inter';src:url('data:font/truetype;base64,${fontB64}');font-weight:bold;}`
-    : "";
-  const fontFamily = fontB64 ? "Inter,sans-serif" : "sans-serif";
+  const textWidth = width - TEXT_X - 20;
 
-  // Word-wrap slogan and compute vertical centering
-  const lines = wordWrap(slogan, CHARS_PER_LINE);
-  const totalTextH = lines.length * LINE_HEIGHT;
-  const textY = (STRIP_HEIGHT - totalTextH) / 2 + FONT_SIZE; // baseline of first line
+  // Render text strip via satori — converts JSX-like objects to SVG with
+  // embedded glyph paths. No system fonts needed; works on Vercel Lambda.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stripSvg = await (satori as any)(
+    {
+      type: "div",
+      props: {
+        style: {
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          width,
+          height: STRIP_HEIGHT,
+          backgroundColor: BRAND_NAVY,
+        },
+        children: [
+          // Left spacer (logo overlaid separately)
+          { type: "div", props: { style: { width: SEPARATOR_X, flexShrink: 0 }, children: "" } },
+          // Separator line
+          {
+            type: "div",
+            props: {
+              style: {
+                width: 2,
+                height: STRIP_HEIGHT - 28,
+                backgroundColor: "rgba(255,255,255,0.35)",
+                flexShrink: 0,
+              },
+              children: "",
+            },
+          },
+          // Slogan text
+          {
+            type: "div",
+            props: {
+              style: {
+                display: "flex",
+                alignItems: "center",
+                width: textWidth,
+                height: STRIP_HEIGHT,
+                paddingLeft: 28,
+              },
+              children: {
+                type: "span",
+                props: {
+                  style: {
+                    fontFamily: "Inter",
+                    fontWeight: "bold",
+                    fontSize: 36,
+                    color: "white",
+                    lineHeight: 1.2,
+                  },
+                  children: slogan,
+                },
+              },
+            },
+          },
+        ],
+      },
+    },
+    {
+      width,
+      height: STRIP_HEIGHT,
+      fonts: [{ name: "Inter", data: getFont(), weight: 700, style: "normal" }],
+    }
+  );
 
-  const tspans = lines
-    .map((line, i) =>
-      `<tspan x="${TEXT_X}" dy="${i === 0 ? 0 : LINE_HEIGHT}">${escapeXml(line)}</tspan>`
-    )
-    .join("");
-
-  const stripSvg = `<svg width="${width}" height="${STRIP_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-    <defs><style>${fontFace}</style></defs>
-    <rect width="${width}" height="${STRIP_HEIGHT}" fill="${BRAND_NAVY}"/>
-    <line x1="${SEPARATOR_X}" y1="14" x2="${SEPARATOR_X}" y2="${STRIP_HEIGHT - 14}"
-      stroke="rgba(255,255,255,0.35)" stroke-width="2"/>
-    <text y="${textY}" font-family="${fontFamily}" font-weight="bold"
-      font-size="${FONT_SIZE}" fill="white">${tspans}</text>
-  </svg>`;
+  const stripBuffer = await sharp(Buffer.from(stripSvg)).png().toBuffer();
 
   const composites: sharp.OverlayOptions[] = [
-    { input: Buffer.from(stripSvg), top: height - STRIP_HEIGHT, left: 0 },
+    { input: stripBuffer, top: height - STRIP_HEIGHT, left: 0 },
   ];
 
   // Logo PNG centered vertically in the left area

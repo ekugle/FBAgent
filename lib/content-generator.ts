@@ -101,6 +101,21 @@ https://tx2pay.com/startup
 
 // ─── Generators ───────────────────────────────────────────────────────────────
 
+/** Strip AI preamble like "Here's the post:\n\n---\n" from generated content. */
+function stripPreamble(text: string): string {
+  const lines = text.split("\n");
+  let start = 0;
+  while (start < lines.length) {
+    const line = lines[start].trim();
+    if (line === "" || /^-{3,}$/.test(line) || /^here'?s\b/i.test(line)) {
+      start++;
+    } else {
+      break;
+    }
+  }
+  return lines.slice(start).join("\n").trim();
+}
+
 export async function generateHustlePost(
   business: string
 ): Promise<{ content: string; image_prompt: string }> {
@@ -119,7 +134,7 @@ export async function generateHustlePost(
   const full = msg.content[0].type === "text" ? msg.content[0].text : "";
   const imgMatch = full.match(/\nIMAGE_PROMPT:\s*([\s\S]+)$/);
   const image_prompt = imgMatch ? imgMatch[1].trim() : "";
-  const content = full.replace(/\nIMAGE_PROMPT:[\s\S]+$/, "").trim();
+  const content = stripPreamble(full.replace(/\nIMAGE_PROMPT:[\s\S]+$/, ""));
   return { content, image_prompt };
 }
 
@@ -140,6 +155,6 @@ export async function generateWordPost(
     ],
   });
 
-  const content = msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
+  const content = msg.content[0].type === "text" ? stripPreamble(msg.content[0].text) : "";
   return { content };
 }

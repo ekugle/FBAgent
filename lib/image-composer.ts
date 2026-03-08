@@ -17,6 +17,17 @@ const STRIP_HEIGHT = 110; // px — height of the bottom branding bar
 const BRAND_NAVY = "#172554"; // TX2Pay dark navy
 
 /**
+ * Load bundled Inter font as base64 for embedding in SVG.
+ * This avoids missing-font issues on serverless (Vercel/Lambda) where
+ * Arial/Helvetica are not available.
+ */
+function getFontBase64(): string {
+  const fontPath = path.join(process.cwd(), "public", "fonts", "Inter.ttf");
+  if (!fs.existsSync(fontPath)) return "";
+  return fs.readFileSync(fontPath).toString("base64");
+}
+
+/**
  * Downloads a Leonardo image, composites a branded bottom strip, and returns
  * the result as a JPEG buffer.
  *
@@ -45,9 +56,10 @@ export async function composeBrandedImage(
   // Composites to apply in order
   const composites: sharp.OverlayOptions[] = [];
 
-  // 1. Dark navy strip (SVG)
+  // 1. Dark navy strip (SVG with embedded font)
   const logoAreaWidth = hasLogo ? 300 : 210;
-  const stripSvg = buildStripSvg(width, slogan, hasLogo, logoAreaWidth);
+  const fontBase64 = getFontBase64();
+  const stripSvg = buildStripSvg(width, slogan, hasLogo, logoAreaWidth, fontBase64);
   composites.push({
     input: Buffer.from(stripSvg),
     top: height - STRIP_HEIGHT,
@@ -77,22 +89,31 @@ function buildStripSvg(
   width: number,
   slogan: string,
   hasLogo: boolean,
-  logoAreaWidth: number
+  logoAreaWidth: number,
+  fontBase64: string
 ): string {
   const separatorX = logoAreaWidth + 20;
   const sloganX = separatorX + 28;
   const midY = STRIP_HEIGHT / 2;
 
+  const fontFace = fontBase64
+    ? `<defs><style>@font-face{font-family:'Inter';src:url('data:font/truetype;base64,${fontBase64}');}</style></defs>`
+    : "";
+  const fontFamily = fontBase64
+    ? "Inter, sans-serif"
+    : "Liberation Sans, DejaVu Sans, sans-serif";
+
   return `<svg width="${width}" height="${STRIP_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+  ${fontFace}
   <rect width="${width}" height="${STRIP_HEIGHT}" fill="${BRAND_NAVY}" fill-opacity="0.93"/>
   ${
     !hasLogo
       ? `<text
            x="28"
            y="${midY + 15}"
-           font-family="Arial, Helvetica, sans-serif"
+           font-family="${fontFamily}"
            font-size="42"
-           font-weight="bold"
+           font-weight="700"
            fill="white">TX2Pay</text>`
       : ""
   }
@@ -104,10 +125,10 @@ function buildStripSvg(
   <text
     x="${sloganX}"
     y="${midY + 9}"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="24"
-    font-style="italic"
-    fill="rgba(255,255,255,0.88)">${escapeXml(slogan)}</text>
+    font-family="${fontFamily}"
+    font-size="26"
+    font-weight="600"
+    fill="white">${escapeXml(slogan)}</text>
 </svg>`;
 }
 

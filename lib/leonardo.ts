@@ -7,8 +7,8 @@
 
 const LEONARDO_BASE = "https://cloud.leonardo.ai/api/rest/v1";
 
-// Leonardo Phoenix — photorealistic, great for service professionals
-const DEFAULT_MODEL_ID = "6b645e3a-d64f-4341-a6d8-7a3690fbf042";
+// Leonardo Lucid Origin — higher quality, cinematic, full HD, cost-efficient
+const DEFAULT_MODEL_ID = "7b592283-e8a7-4c5a-9ba6-d18c31f258b9";
 
 function leonardoHeaders(): Record<string, string> {
   return {

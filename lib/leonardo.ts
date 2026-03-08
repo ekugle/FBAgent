@@ -61,9 +61,9 @@ export async function generateImage(prompt: string): Promise<string> {
     throw new Error("Leonardo API returned no generationId");
   }
 
-  // Poll until complete (up to 60s)
-  for (let i = 0; i < 20; i++) {
-    await new Promise((r) => setTimeout(r, 3000));
+  // Poll until complete (up to 3 minutes)
+  for (let i = 0; i < 36; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
 
     const statusRes = await fetch(
       `${LEONARDO_BASE}/generations/${generationId}`,
@@ -86,5 +86,5 @@ export async function generateImage(prompt: string): Promise<string> {
     }
   }
 
-  throw new Error("Leonardo generation timed out after 60s");
+  throw new Error("Leonardo generation timed out after 3 minutes");
 }

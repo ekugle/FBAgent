@@ -59,6 +59,7 @@ export default function PostCard({ post }: PostCardProps) {
   const [editMode, setEditMode] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
   const [editedScheduledAt, setEditedScheduledAt] = useState(post.scheduled_at ?? "");
+  const [currentScheduledAt, setCurrentScheduledAt] = useState(post.scheduled_at ?? "");
   const [currentStatus, setCurrentStatus] = useState(post.status);
   const [error, setError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(post.image_urls?.[0] ?? null);
@@ -152,6 +153,7 @@ export default function PostCard({ post }: PostCardProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save");
       setEditMode(false);
+      if (editedScheduledAt) setCurrentScheduledAt(editedScheduledAt);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error saving post");
     } finally {
@@ -247,9 +249,9 @@ export default function PostCard({ post }: PostCardProps) {
               🎬 Reel Video
             </span>
           )}
-          {post.scheduled_at && (
+          {currentScheduledAt && (
             <span className="text-xs text-blue-600">
-              Scheduled: {new Date(post.scheduled_at).toLocaleString()}
+              Scheduled: {new Date(currentScheduledAt).toLocaleString()}
             </span>
           )}
         </div>

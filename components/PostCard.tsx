@@ -83,6 +83,9 @@ export default function PostCard({ post }: PostCardProps) {
     isReel ? (post.image_urls?.[0] ?? null) : null
   );
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [retrieveMode, setRetrieveMode] = useState(false);
+  const [retrieveInput, setRetrieveInput] = useState("");
+  const [retrieving, setRetrieving] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /** Convert UTC ISO string → "YYYY-MM-DDTHH:mm" in browser local time for datetime-local input */
@@ -292,6 +295,33 @@ export default function PostCard({ post }: PostCardProps) {
     } catch (err) {
       setVideoPhase("idle");
       setVideoError(err instanceof Error ? err.message : "Error starting video generation");
+    }
+  }
+
+  async function handleRetrieve() {
+    if (!retrieveInput.trim()) return;
+    setRetrieving(true);
+    setVideoError(null);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/retrieve-video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leonardo_url: retrieveInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("[Video] Retrieve response:", data);
+        setVideoError(data.error ?? `Retrieve failed (${res.status})`);
+        return;
+      }
+      setVideoUrl(data.video_url);
+      setVideoPhase("complete");
+      setRetrieveMode(false);
+      setRetrieveInput("");
+    } catch (err) {
+      setVideoError(err instanceof Error ? err.message : "Retrieve error");
+    } finally {
+      setRetrieving(false);
     }
   }
 
@@ -508,13 +538,22 @@ export default function PostCard({ post }: PostCardProps) {
             </span>
             {/* Show generate button only when idle or complete */}
             {videoPhase === "idle" && (
-              <button
-                onClick={handleGenerateVideo}
-                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-pink-600 text-white hover:bg-pink-700 transition-colors"
-              >
-                <Wand2 className="w-3 h-3" />
-                Generate Reel Video
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setRetrieveMode(!retrieveMode)}
+                  className="text-xs text-pink-500 underline hover:text-pink-700"
+                  title="Already generated on Leonardo? Paste the URL to retrieve it"
+                >
+                  Retrieve existing
+                </button>
+                <button
+                  onClick={handleGenerateVideo}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-pink-600 text-white hover:bg-pink-700 transition-colors"
+                >
+                  <Wand2 className="w-3 h-3" />
+                  Generate Reel Video
+                </button>
+              </div>
             )}
             {videoPhase === "complete" && (
               <button
@@ -547,7 +586,42 @@ export default function PostCard({ post }: PostCardProps) {
           )}
 
           {videoError && (
-            <p className="mt-2 text-xs text-red-600">{videoError}</p>
+            <div className="mt-2">
+              <p className="text-xs text-red-600">{videoError}</p>
+              {!retrieveMode && (
+                <button
+                  onClick={() => setRetrieveMode(true)}
+                  className="mt-1 text-xs text-pink-600 underline hover:text-pink-800"
+                >
+                  Already generated on Leonardo? Paste URL to retrieve
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Retrieve from Leonardo URL */}
+          {(retrieveMode || videoPhase === "idle") && !videoUrl && (
+            <div className={`mt-2 ${retrieveMode ? "block" : "hidden"}`}>
+              <p className="text-xs text-pink-700 mb-1">Paste the Leonardo generation URL:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={retrieveInput}
+                  onChange={(e) => setRetrieveInput(e.target.value)}
+                  placeholder="https://app.leonardo.ai/generation/video/..."
+                  className="flex-1 text-xs border border-pink-200 rounded px-2 py-1.5 focus:ring-1 focus:ring-pink-400 focus:border-transparent"
+                />
+                <button
+                  onClick={handleRetrieve}
+                  disabled={retrieving || !retrieveInput.trim()}
+                  className="flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-md bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-60 transition-colors"
+                >
+                  {retrieving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                  {retrieving ? "Retrieving…" : "Retrieve"}
+                </button>
+                <button onClick={() => { setRetrieveMode(false); setRetrieveInput(""); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+              </div>
+            </div>
           )}
 
           {videoUrl && videoPhase === "complete" && (

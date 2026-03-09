@@ -207,6 +207,24 @@ export async function checkVideoGeneration(generationId: string): Promise<{
   videoUrl?: string;
   rawResponse?: unknown;
 }> {
+  // ── 1. Try the dedicated Image-to-Video status endpoint first ──────────────
+  // MOTION2/MOTION2FAST jobs may have their final URL here, not in /generations/{id}
+  const itovRes = await fetch(`${LEONARDO_BASE}/generations-image-to-video/${generationId}`, {
+    headers: leonardoHeaders(),
+  });
+  if (itovRes.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const itovData = (await itovRes.json()) as any;
+    const itovGen = itovData?.generation_by_pk ?? itovData?.generations_by_pk;
+    if (itovGen?.status === "COMPLETE") {
+      const videoUrl: string | undefined =
+        itovGen.mp4URL || itovGen.motionMp4URL || itovGen.url || itovGen.motionMP4URL;
+      if (videoUrl) return { status: "complete", videoUrl };
+    }
+    if (itovGen?.status === "FAILED") return { status: "failed" };
+  }
+
+  // ── 2. Fall back to the generic /generations/{id} endpoint ────────────────
   const statusRes = await fetch(`${LEONARDO_BASE}/generations/${generationId}`, {
     headers: leonardoHeaders(),
   });
@@ -216,25 +234,29 @@ export async function checkVideoGeneration(generationId: string): Promise<{
   const gen = statusData?.generations_by_pk;
 
   if (gen?.status === "COMPLETE") {
-    // Try every known location for the MP4 URL across all Leonardo models
-    const videoUrl: string | undefined =
-      gen.generated_images?.[0]?.motionMp4URL ||   // SVD / older models
-      gen.generated_images?.[0]?.url ||             // MOTION2FAST: video stored as image URL
-      gen.generated_videos?.[0]?.motionMp4URL ||   // array variant
-      gen.generated_videos?.[0]?.url ||             // array url
-      gen.generated_video?.motionMp4URL ||          // singular object
+    // Try every known field name across all Leonardo model types
+    const motionUrl: string | undefined =
+      gen.generated_images?.[0]?.motionMp4URL ||    // SVD / older models
+      gen.generated_videos?.[0]?.motionMp4URL ||    // generated_videos array
+      gen.generated_videos?.[0]?.url ||
+      gen.generated_video?.motionMp4URL ||           // generated_video singular
       gen.generated_video?.url ||
-      gen.generated_video?.motionMP4URL ||          // different capitalisation seen in docs
+      gen.generated_video?.motionMP4URL ||
       gen.motionMp4URL ||
       gen.url;
 
-    if (videoUrl) {
-      return { status: "complete", videoUrl };
-    }
+    // MOTION2FAST may expose the video URL as generated_images[0].url (mp4, not jpg)
+    const imgUrl: string | undefined = gen.generated_images?.[0]?.url;
+    const imgVideoUrl = imgUrl && (imgUrl.includes(".mp4") || imgUrl.includes("video"))
+      ? imgUrl
+      : undefined;
 
-    // Still no URL — return raw response so the caller can surface it for debugging
+    const videoUrl = motionUrl || imgVideoUrl;
+    if (videoUrl) return { status: "complete", videoUrl };
+
+    // Nothing found — bubble the raw response back so the caller can log it client-side
     console.error(
-      "Leonardo Video COMPLETE but no URL found. Raw response:\n",
+      "Leonardo Video COMPLETE but no URL found. Raw:\n",
       JSON.stringify(statusData, null, 2)
     );
     return { status: "complete", rawResponse: statusData };

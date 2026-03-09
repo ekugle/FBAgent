@@ -39,7 +39,7 @@ export async function POST(
 
   try {
     // The MP4 URL is on the source image generation record
-    const motionUrl = await getMotionVideoUrl(imageGenId);
+    const { url: motionUrl } = await getMotionVideoUrl(imageGenId);
 
     if (!motionUrl) {
       return NextResponse.json(
@@ -49,7 +49,7 @@ export async function POST(
     }
 
     // Download from Leonardo and upload to Supabase for a permanent URL
-    const videoRes = await fetch(motionUrl);
+    const videoRes = await fetch(motionUrl as string);
     if (!videoRes.ok) {
       throw new Error(`Failed to download video from Leonardo (${videoRes.status})`);
     }

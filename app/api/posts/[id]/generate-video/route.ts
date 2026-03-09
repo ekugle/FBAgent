@@ -165,12 +165,14 @@ export async function GET(
 
       if (result.status === "complete") {
         // The MP4 URL is written back onto the SOURCE IMAGE generation, not the job record.
-        // Check the image generation for motionMp4URL.
-        const motionUrl = await getMotionVideoUrl(imageGenId);
+        const { url: motionUrl, raw: imgRaw } = await getMotionVideoUrl(imageGenId);
         if (!motionUrl) {
-          // URL not yet propagated — keep polling (usually appears within seconds)
-          console.log("Video job COMPLETE but motionMp4URL not yet on image gen — keep polling");
-          return NextResponse.json({ status: "generating_video" });
+          // Surface the raw image gen response so the client console can show it
+          console.log("Video COMPLETE but motionMp4URL still null on image gen. Raw:", JSON.stringify(imgRaw, null, 2));
+          return NextResponse.json({
+            status: "generating_video",
+            debug: `Video job complete but motionMp4URL not yet on image gen ${imageGenId}`,
+          });
         }
 
         // Download from Leonardo (temporary URL) and upload to Supabase for permanence

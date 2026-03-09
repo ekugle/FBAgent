@@ -201,15 +201,34 @@ export async function startVideoGeneration(
 /**
  * After a video generation job completes, Leonardo writes the final MP4 URL
  * back onto the SOURCE IMAGE generation record (not the video job record).
- * This function checks the image generation for motionMp4URL.
+ * Returns the URL if found, plus the raw response for debugging.
  */
-export async function getMotionVideoUrl(imageGenId: string): Promise<string | undefined> {
+export async function getMotionVideoUrl(imageGenId: string): Promise<{
+  url?: string;
+  raw?: unknown;
+}> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = await fetch(`${LEONARDO_BASE}/generations/${imageGenId}`, { headers: leonardoHeaders() });
-  if (!res.ok) return undefined;
-  const data = (await res.json()) as any;
+  if (!res.ok) return {};
+  const data = (await res.json()) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
   const gen = data?.generations_by_pk;
-  return gen?.generated_images?.[0]?.motionMp4URL || undefined;
+  const img = gen?.generated_images?.[0];
+
+  // Try all possible locations for the MP4 URL
+  const url: string | undefined =
+    img?.motionMp4URL ||
+    img?.motionMP4URL ||
+    gen?.motionMp4URL ||
+    gen?.generated_video?.url ||
+    gen?.generated_video?.motionMp4URL;
+
+  console.log(`getMotionVideoUrl(${imageGenId}): status=${gen?.status} url=${url ?? "null"}`);
+  if (!url) {
+    console.log("image gen keys:", Object.keys(gen ?? {}));
+    console.log("img keys:", Object.keys(img ?? {}));
+  }
+
+  return { url, raw: data };
 }
 
 /**

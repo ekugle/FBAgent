@@ -14,6 +14,9 @@
     }
   ],
   "functions": {
+    "app/api/posts/[id]/generate-video/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/agent/route.ts": {
       "maxDuration": 120
     },

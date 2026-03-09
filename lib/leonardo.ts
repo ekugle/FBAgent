@@ -132,7 +132,7 @@ export async function generateVideoFromImage(
     headers: leonardoHeaders(),
     body: JSON.stringify({
       imageId,
-      imageType: "Generated",
+      imageType: "GENERATED",
       prompt,
       model,
       resolution: "RESOLUTION_720",

@@ -110,6 +110,8 @@ interface GenerationStatusWithVideoResponse {
   generations_by_pk: {
     status: "PENDING" | "PROCESSING" | "COMPLETE" | "FAILED";
     generated_images: Array<{ url: string; id: string; motionMp4URL?: string }>;
+    generated_videos?: Array<{ url?: string; motionMp4URL?: string }>;
+    motionMp4URL?: string;
   };
 }
 
@@ -165,8 +167,15 @@ export async function generateVideoFromImage(
     const gen = statusData.generations_by_pk;
 
     if (gen?.status === "COMPLETE") {
-      const videoUrl = gen.generated_images?.[0]?.motionMp4URL;
-      if (!videoUrl) throw new Error("Leonardo Video complete but no MP4 URL");
+      const videoUrl =
+        gen.generated_images?.[0]?.motionMp4URL ||
+        gen.generated_videos?.[0]?.motionMp4URL ||
+        gen.generated_videos?.[0]?.url ||
+        gen.motionMp4URL;
+      if (!videoUrl) {
+        console.error("Leonardo Video COMPLETE but no URL found. Response:", JSON.stringify(statusData, null, 2));
+        throw new Error("Leonardo Video complete but no MP4 URL");
+      }
       return videoUrl;
     }
     if (gen?.status === "FAILED") {

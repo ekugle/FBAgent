@@ -161,8 +161,19 @@ export async function GET(
       const result = await checkVideoGeneration(videoGenId);
 
       if (result.status === "complete") {
+        // No URL found — return raw response as error body so the client can log it
+        if (!result.videoUrl) {
+          const debugInfo = JSON.stringify(result.rawResponse, null, 2);
+          console.error("No video URL in COMPLETE response. Raw:", debugInfo);
+          await db.from("posts").update({ metadata: { ...meta, video_gen_phase: null } }).eq("id", id);
+          return NextResponse.json(
+            { error: "Leonardo Video complete but no MP4 URL — see rawResponse", rawResponse: result.rawResponse },
+            { status: 500 }
+          );
+        }
+
         // Download from Leonardo (temporary URL) and upload to Supabase for permanence
-        const videoRes = await fetch(result.videoUrl!);
+        const videoRes = await fetch(result.videoUrl);
         if (!videoRes.ok) {
           throw new Error(`Failed to download video from Leonardo (${videoRes.status})`);
         }

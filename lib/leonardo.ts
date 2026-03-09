@@ -200,28 +200,44 @@ export async function startVideoGeneration(
 
 /**
  * Poll video generation status once. Returns status + videoUrl when COMPLETE.
+ * Tries every known Leonardo response shape (SVD, MOTION2, MOTION2FAST).
  */
 export async function checkVideoGeneration(generationId: string): Promise<{
   status: "pending" | "complete" | "failed";
   videoUrl?: string;
+  rawResponse?: unknown;
 }> {
   const statusRes = await fetch(`${LEONARDO_BASE}/generations/${generationId}`, {
     headers: leonardoHeaders(),
   });
   if (!statusRes.ok) return { status: "pending" };
-  const statusData = (await statusRes.json()) as GenerationStatusWithVideoResponse;
-  const gen = statusData.generations_by_pk;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const statusData = (await statusRes.json()) as any;
+  const gen = statusData?.generations_by_pk;
+
   if (gen?.status === "COMPLETE") {
-    const videoUrl =
-      gen.generated_images?.[0]?.motionMp4URL ||
-      gen.generated_videos?.[0]?.motionMp4URL ||
-      gen.generated_videos?.[0]?.url ||
-      gen.motionMp4URL;
-    if (!videoUrl) {
-      console.error("Leonardo Video COMPLETE but no URL. Response:", JSON.stringify(statusData, null, 2));
-      throw new Error("Leonardo Video complete but no MP4 URL found");
+    // Try every known location for the MP4 URL across all Leonardo models
+    const videoUrl: string | undefined =
+      gen.generated_images?.[0]?.motionMp4URL ||   // SVD / older models
+      gen.generated_images?.[0]?.url ||             // MOTION2FAST: video stored as image URL
+      gen.generated_videos?.[0]?.motionMp4URL ||   // array variant
+      gen.generated_videos?.[0]?.url ||             // array url
+      gen.generated_video?.motionMp4URL ||          // singular object
+      gen.generated_video?.url ||
+      gen.generated_video?.motionMP4URL ||          // different capitalisation seen in docs
+      gen.motionMp4URL ||
+      gen.url;
+
+    if (videoUrl) {
+      return { status: "complete", videoUrl };
     }
-    return { status: "complete", videoUrl };
+
+    // Still no URL — return raw response so the caller can surface it for debugging
+    console.error(
+      "Leonardo Video COMPLETE but no URL found. Raw response:\n",
+      JSON.stringify(statusData, null, 2)
+    );
+    return { status: "complete", rawResponse: statusData };
   }
   if (gen?.status === "FAILED") return { status: "failed" };
   return { status: "pending" };

@@ -67,7 +67,7 @@ export default function NewPostPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content,
-          scheduled_at: scheduledAt || undefined,
+          scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         }),
       });
       const data = await res.json();
@@ -91,7 +91,7 @@ export default function NewPostPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: imagePostContent,
-            scheduled_at: scheduledAt || undefined,
+            scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
             metadata: {
               post_type: "image",
               image_prompt: imagePrompt,
@@ -108,7 +108,7 @@ export default function NewPostPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: reelContent,
-            scheduled_at: scheduledAt || undefined,
+            scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
             metadata: {
               post_type: "reel",
               video_prompt: videoPrompt,
@@ -119,15 +119,16 @@ export default function NewPostPage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed to create post");
       } else {
+        const isoScheduledAt = scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
         const body =
           postType === "hustle"
-            ? { post_type: "hustle", business, scheduled_at: scheduledAt || undefined }
+            ? { post_type: "hustle", business, scheduled_at: isoScheduledAt }
             : {
                 post_type: "word",
                 url: selectedUrl,
                 url_label: selectedUrlLabel,
                 angle,
-                scheduled_at: scheduledAt || undefined,
+                scheduled_at: isoScheduledAt,
               };
         const res = await fetch("/api/content/generate", {
           method: "POST",

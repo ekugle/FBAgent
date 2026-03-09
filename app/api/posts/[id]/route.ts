@@ -14,7 +14,7 @@ const PatchSchema = z.object({
   approved_by: z.string().optional(),
   rejected_reason: z.string().optional(),
   content: z.string().optional(),
-  scheduled_at: z.string().datetime().nullish(),
+  scheduled_at: z.string().nullish(),
   post_now: z.boolean().optional(),
 });
 

@@ -100,7 +100,7 @@ export default function NewPostPage() {
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to create post");
+        if (!res.ok) throw new Error(data.details ? JSON.stringify(data.details) : (data.error ?? "Failed to create post"));
       } else if (postType === "reel") {
         // Reel posts go to /api/posts with video metadata
         const res = await fetch("/api/posts", {
@@ -117,7 +117,7 @@ export default function NewPostPage() {
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to create post");
+        if (!res.ok) throw new Error(data.details ? JSON.stringify(data.details) : (data.error ?? "Failed to create post"));
       } else {
         const isoScheduledAt = scheduledAt ? new Date(scheduledAt).toISOString() : undefined;
         const body =

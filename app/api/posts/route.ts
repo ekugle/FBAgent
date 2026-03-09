@@ -11,7 +11,10 @@ import { z } from "zod";
 const CreatePostSchema = z.object({
   content: z.string().min(1).max(63206),
   image_urls: z.array(z.string().url()).optional(),
-  scheduled_at: z.string().datetime().optional(),
+  // Accept any non-empty string so both "YYYY-MM-DDTHH:mm" (datetime-local)
+  // and full ISO strings (with Z / offset) are valid.  Supabase rejects
+  // truly invalid values so we don't need strict format checking here.
+  scheduled_at: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
 });
 

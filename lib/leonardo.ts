@@ -199,6 +199,20 @@ export async function startVideoGeneration(
 }
 
 /**
+ * After a video generation job completes, Leonardo writes the final MP4 URL
+ * back onto the SOURCE IMAGE generation record (not the video job record).
+ * This function checks the image generation for motionMp4URL.
+ */
+export async function getMotionVideoUrl(imageGenId: string): Promise<string | undefined> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await fetch(`${LEONARDO_BASE}/generations/${imageGenId}`, { headers: leonardoHeaders() });
+  if (!res.ok) return undefined;
+  const data = (await res.json()) as any;
+  const gen = data?.generations_by_pk;
+  return gen?.generated_images?.[0]?.motionMp4URL || undefined;
+}
+
+/**
  * Poll video generation status once. Returns status + videoUrl when COMPLETE.
  * Tries every known Leonardo response shape (SVD, MOTION2, MOTION2FAST).
  */

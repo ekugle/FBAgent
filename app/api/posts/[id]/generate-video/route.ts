@@ -17,6 +17,7 @@ import {
   checkImageGeneration,
   startVideoGeneration,
   checkVideoGeneration,
+  getMotionVideoUrl,
   VideoQuality,
 } from "@/lib/leonardo";
 
@@ -156,24 +157,24 @@ export async function GET(
   // ── Phase: waiting for video ──
   if (phase === "video") {
     const videoGenId = meta.video_video_gen_id as string;
+    const imageGenId = meta.video_image_gen_id as string;
 
     try {
+      // Check the video JOB for completion status
       const result = await checkVideoGeneration(videoGenId);
 
       if (result.status === "complete") {
-        // No URL found — return raw response as error body so the client can log it
-        if (!result.videoUrl) {
-          const debugInfo = JSON.stringify(result.rawResponse, null, 2);
-          console.error("No video URL in COMPLETE response. Raw:", debugInfo);
-          await db.from("posts").update({ metadata: { ...meta, video_gen_phase: null } }).eq("id", id);
-          return NextResponse.json(
-            { error: "Leonardo Video complete but no MP4 URL — see rawResponse", rawResponse: result.rawResponse },
-            { status: 500 }
-          );
+        // The MP4 URL is written back onto the SOURCE IMAGE generation, not the job record.
+        // Check the image generation for motionMp4URL.
+        const motionUrl = await getMotionVideoUrl(imageGenId);
+        if (!motionUrl) {
+          // URL not yet propagated — keep polling (usually appears within seconds)
+          console.log("Video job COMPLETE but motionMp4URL not yet on image gen — keep polling");
+          return NextResponse.json({ status: "generating_video" });
         }
 
         // Download from Leonardo (temporary URL) and upload to Supabase for permanence
-        const videoRes = await fetch(result.videoUrl);
+        const videoRes = await fetch(motionUrl);
         if (!videoRes.ok) {
           throw new Error(`Failed to download video from Leonardo (${videoRes.status})`);
         }

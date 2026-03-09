@@ -170,13 +170,17 @@ export async function GET(
         const filename = `posts/${id}-${Date.now()}.mp4`;
         const storageUrl = await uploadVideoToStorage(videoBuffer, filename);
 
-        await db
+        const { error: saveError } = await db
           .from("posts")
           .update({
             image_urls: [storageUrl],
             metadata: { ...meta, video_gen_phase: "complete" },
           })
           .eq("id", id);
+        if (saveError) {
+          console.error("Failed to save video URL to post:", saveError);
+          // Still return the URL so the client can display it even if DB save failed
+        }
 
         return NextResponse.json({ status: "complete", video_url: storageUrl });
       }

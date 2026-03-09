@@ -209,26 +209,29 @@ export default function PostCard({ post }: PostCardProps) {
   // ── Video polling helpers ──────────────────────────────────────────────────
 
   function startPolling(postId: string) {
+    console.log("[Video] Starting polling for post", postId);
     if (pollingRef.current) clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/posts/${postId}/generate-video`);
-        const data = await res.json();
+        let data: Record<string, unknown> = {};
+        try { data = await res.json(); } catch { console.warn("[Video] Poll returned non-JSON", res.status); return; }
+        console.log("[Video] Poll response:", data.status, data);
         if (!res.ok || data.error) {
-          setVideoError(data.error ?? "Generation failed");
+          setVideoError((data.error as string) ?? `Generation failed (${res.status})`);
           setVideoPhase("idle");
           clearInterval(pollingRef.current!);
           pollingRef.current = null;
           return;
         }
-        setVideoPhase(data.status ?? "idle");
+        setVideoPhase((data.status as string) ?? "idle");
         if (data.status === "complete") {
-          setVideoUrl(data.video_url ?? null);
+          setVideoUrl((data.video_url as string) || null);
           clearInterval(pollingRef.current!);
           pollingRef.current = null;
         }
-      } catch {
-        // Network blip — keep polling
+      } catch (err) {
+        console.warn("[Video] Poll network error:", err);
       }
     }, 5000);
   }
@@ -248,20 +251,23 @@ export default function PostCard({ post }: PostCardProps) {
   async function handleGenerateVideo() {
     setVideoError(null);
     setVideoPhase("generating_image");
+    console.log("[Video] Starting generation for post", post.id);
     try {
       const res = await fetch(`/api/posts/${post.id}/generate-video`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
+      let data: Record<string, unknown> = {};
+      try { data = await res.json(); } catch { data = { error: `Server returned ${res.status} (non-JSON)` }; }
+      console.log("[Video] POST response:", res.status, data);
+      if (!res.ok || data.error) {
         setVideoPhase("idle");
-        setVideoError(data.error ?? "Failed to start generation");
+        setVideoError((data.error as string) ?? `Failed to start (HTTP ${res.status})`);
         return;
       }
       if (data.status === "complete") {
-        setVideoUrl(data.video_url ?? null);
+        setVideoUrl((data.video_url as string) || null);
         setVideoPhase("complete");
         return;
       }
-      setVideoPhase(data.status ?? "generating_image");
+      setVideoPhase((data.status as string) ?? "generating_image");
       startPolling(post.id);
     } catch (err) {
       setVideoPhase("idle");

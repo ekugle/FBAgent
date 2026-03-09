@@ -115,6 +115,122 @@ interface GenerationStatusWithVideoResponse {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Non-polling helpers — start a job and return the generationId immediately
+// ---------------------------------------------------------------------------
+
+/**
+ * Start image generation without polling. Returns the generationId.
+ */
+export async function startImageGeneration(prompt: string): Promise<string> {
+  const genRes = await fetch(`${LEONARDO_BASE}/generations`, {
+    method: "POST",
+    headers: leonardoHeaders(),
+    body: JSON.stringify({
+      prompt,
+      modelId: DEFAULT_MODEL_ID,
+      num_images: 1,
+      width: 1024,
+      height: 576,
+      ultra: false,
+    }),
+  });
+  if (!genRes.ok) {
+    const text = await genRes.text();
+    throw new Error(`Leonardo generation failed (${genRes.status}): ${text}`);
+  }
+  const genData = (await genRes.json()) as GenerationResponse;
+  const generationId = genData.sdGenerationJob?.generationId;
+  if (!generationId) throw new Error("Leonardo API returned no generationId");
+  return generationId;
+}
+
+/**
+ * Poll image generation status once. Returns status + imageId/url when COMPLETE.
+ */
+export async function checkImageGeneration(generationId: string): Promise<{
+  status: "pending" | "complete" | "failed";
+  imageId?: string;
+  imageUrl?: string;
+}> {
+  const statusRes = await fetch(`${LEONARDO_BASE}/generations/${generationId}`, {
+    headers: leonardoHeaders(),
+  });
+  if (!statusRes.ok) return { status: "pending" };
+  const statusData = (await statusRes.json()) as GenerationStatusResponse;
+  const gen = statusData.generations_by_pk;
+  if (gen?.status === "COMPLETE") {
+    const img = gen.generated_images?.[0];
+    if (!img) throw new Error("Leonardo generation complete but no image");
+    return { status: "complete", imageId: img.id, imageUrl: img.url };
+  }
+  if (gen?.status === "FAILED") return { status: "failed" };
+  return { status: "pending" };
+}
+
+/**
+ * Start video (Image-to-Video) generation without polling. Returns the generationId.
+ */
+export async function startVideoGeneration(
+  imageId: string,
+  prompt: string,
+  model: VideoQuality = "MOTION2FAST"
+): Promise<string> {
+  const motionRes = await fetch(`${LEONARDO_BASE}/generations-image-to-video`, {
+    method: "POST",
+    headers: leonardoHeaders(),
+    body: JSON.stringify({
+      imageId,
+      imageType: "GENERATED",
+      prompt,
+      model,
+      resolution: "RESOLUTION_720",
+      isPublic: false,
+    }),
+  });
+  if (!motionRes.ok) {
+    const text = await motionRes.text();
+    throw new Error(`Leonardo Image-to-Video failed (${motionRes.status}): ${text}`);
+  }
+  const motionData = (await motionRes.json()) as VideoGenerationResponse;
+  const generationId = motionData.motionVideoGenerationJob?.generationId;
+  if (!generationId) throw new Error("Leonardo Video API returned no generationId");
+  return generationId;
+}
+
+/**
+ * Poll video generation status once. Returns status + videoUrl when COMPLETE.
+ */
+export async function checkVideoGeneration(generationId: string): Promise<{
+  status: "pending" | "complete" | "failed";
+  videoUrl?: string;
+}> {
+  const statusRes = await fetch(`${LEONARDO_BASE}/generations/${generationId}`, {
+    headers: leonardoHeaders(),
+  });
+  if (!statusRes.ok) return { status: "pending" };
+  const statusData = (await statusRes.json()) as GenerationStatusWithVideoResponse;
+  const gen = statusData.generations_by_pk;
+  if (gen?.status === "COMPLETE") {
+    const videoUrl =
+      gen.generated_images?.[0]?.motionMp4URL ||
+      gen.generated_videos?.[0]?.motionMp4URL ||
+      gen.generated_videos?.[0]?.url ||
+      gen.motionMp4URL;
+    if (!videoUrl) {
+      console.error("Leonardo Video COMPLETE but no URL. Response:", JSON.stringify(statusData, null, 2));
+      throw new Error("Leonardo Video complete but no MP4 URL found");
+    }
+    return { status: "complete", videoUrl };
+  }
+  if (gen?.status === "FAILED") return { status: "failed" };
+  return { status: "pending" };
+}
+
+// ---------------------------------------------------------------------------
+// Legacy blocking helpers (kept for image-only posts)
+// ---------------------------------------------------------------------------
+
 /**
  * Animate a previously generated image into a short video using
  * Leonardo Image-to-Video (MOTION2FAST by default for cost efficiency).

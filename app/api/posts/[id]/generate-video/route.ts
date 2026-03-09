@@ -1,17 +1,94 @@
 /**
- * POST /api/posts/[id]/generate-video
+ * Async two-phase video generation for Reel posts.
  *
- * Reads video_prompt from post metadata, calls Leonardo AI to:
- *   1. Generate a base image (16:9) from the prompt
- *   2. Animate it into an MP4 via Image-to-Video (MOTION2FAST or MOTION2)
- * Then uploads the video to Supabase Storage and saves the URL.
+ * POST → kicks off image generation immediately and returns {status, generationId}.
+ *        Saves the generationId in post.metadata so the pipeline survives timeouts.
+ *
+ * GET  → called by the frontend every ~5 s to advance the pipeline:
+ *          phase "image"  → poll Leonardo; when complete, start video generation
+ *          phase "video"  → poll Leonardo; when complete, download + upload to Supabase + save URL
+ *        Returns {status: "generating_image"|"generating_video"|"complete"|"failed", video_url?}
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, uploadVideoToStorage } from "@/lib/supabase";
-import { generateImageWithId, generateVideoFromImage, VideoQuality } from "@/lib/leonardo";
+import {
+  startImageGeneration,
+  checkImageGeneration,
+  startVideoGeneration,
+  checkVideoGeneration,
+  VideoQuality,
+} from "@/lib/leonardo";
+
+// ── POST: start (or restart) generation ─────────────────────────────────────
 
 export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const db = createServerClient();
+
+  const { data: post, error: fetchError } = await db
+    .from("posts")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (fetchError || !post) {
+    return NextResponse.json({ error: "Post not found" }, { status: 404 });
+  }
+
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+  const restart = body?.restart === true;
+
+  const meta = (post.metadata ?? {}) as Record<string, unknown>;
+  const videoPrompt = meta?.video_prompt as string | undefined;
+  const videoQuality = ((meta?.video_quality as string | undefined) ?? "MOTION2FAST") as VideoQuality;
+
+  if (!videoPrompt) {
+    return NextResponse.json({ error: "This post has no video prompt" }, { status: 400 });
+  }
+
+  // If already in progress, don't double-start — just report current phase
+  if (!restart && meta.video_gen_phase === "image" && meta.video_image_gen_id) {
+    return NextResponse.json({ status: "generating_image" });
+  }
+  if (!restart && meta.video_gen_phase === "video" && meta.video_video_gen_id) {
+    return NextResponse.json({ status: "generating_video" });
+  }
+  if (!restart && meta.video_gen_phase === "complete") {
+    const videoUrl = (post.image_urls as string[] | null)?.[0];
+    return NextResponse.json({ status: "complete", video_url: videoUrl });
+  }
+
+  try {
+    const imageGenId = await startImageGeneration(videoPrompt);
+
+    const { error: updateError } = await db
+      .from("posts")
+      .update({
+        metadata: {
+          ...meta,
+          video_gen_phase: "image",
+          video_image_gen_id: imageGenId,
+          video_quality_used: videoQuality,
+        },
+      })
+      .eq("id", id);
+
+    if (updateError) throw updateError;
+
+    return NextResponse.json({ status: "generating_image" });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// ── GET: advance pipeline one step ──────────────────────────────────────────
+
+export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -28,46 +105,94 @@ export async function POST(
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
-  const meta = post.metadata as Record<string, unknown>;
-  const videoPrompt = meta?.video_prompt as string | undefined;
-  const videoQuality = ((meta?.video_quality as string | undefined) ?? "MOTION2FAST") as VideoQuality;
+  const meta = (post.metadata ?? {}) as Record<string, unknown>;
+  const phase = meta.video_gen_phase as string | undefined;
 
-  if (!videoPrompt) {
-    return NextResponse.json(
-      { error: "This post has no video prompt" },
-      { status: 400 }
-    );
+  if (!phase || phase === "idle") {
+    return NextResponse.json({ status: "idle" });
   }
 
-  try {
-    // 1. Generate a base image (16:9 landscape) from the prompt
-    const { imageId } = await generateImageWithId(videoPrompt);
+  if (phase === "complete") {
+    const videoUrl = (post.image_urls as string[] | null)?.[0];
+    return NextResponse.json({ status: "complete", video_url: videoUrl });
+  }
 
-    // 2. Animate the image using Image-to-Video
-    const leonardoVideoUrl = await generateVideoFromImage(imageId, videoPrompt, videoQuality);
+  // ── Phase: waiting for image ──
+  if (phase === "image") {
+    const imageGenId = meta.video_image_gen_id as string;
+    const videoQuality = ((meta.video_quality_used as string | undefined) ?? "MOTION2FAST") as VideoQuality;
+    const videoPrompt = meta.video_prompt as string;
 
-    // 3. Download the video from Leonardo (temporary URL)
-    const videoRes = await fetch(leonardoVideoUrl);
-    if (!videoRes.ok) {
-      throw new Error(`Failed to download video from Leonardo (${videoRes.status})`);
+    try {
+      const result = await checkImageGeneration(imageGenId);
+
+      if (result.status === "complete") {
+        // Image done → kick off video generation
+        const videoGenId = await startVideoGeneration(result.imageId!, videoPrompt, videoQuality);
+
+        await db
+          .from("posts")
+          .update({
+            metadata: { ...meta, video_gen_phase: "video", video_video_gen_id: videoGenId },
+          })
+          .eq("id", id);
+
+        return NextResponse.json({ status: "generating_video" });
+      }
+
+      if (result.status === "failed") {
+        await db.from("posts").update({ metadata: { ...meta, video_gen_phase: null } }).eq("id", id);
+        return NextResponse.json({ error: "Image generation failed" }, { status: 500 });
+      }
+
+      return NextResponse.json({ status: "generating_image" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await db.from("posts").update({ metadata: { ...meta, video_gen_phase: null } }).eq("id", id);
+      return NextResponse.json({ error: message }, { status: 500 });
     }
-    const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
-
-    // 4. Upload to Supabase Storage for a permanent URL
-    const filename = `posts/${id}-${Date.now()}.mp4`;
-    const videoUrl = await uploadVideoToStorage(videoBuffer, filename);
-
-    // 5. Save the permanent URL back to the post
-    const { error: updateError } = await db
-      .from("posts")
-      .update({ image_urls: [videoUrl] })
-      .eq("id", id);
-
-    if (updateError) throw updateError;
-
-    return NextResponse.json({ video_url: videoUrl });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
   }
+
+  // ── Phase: waiting for video ──
+  if (phase === "video") {
+    const videoGenId = meta.video_video_gen_id as string;
+
+    try {
+      const result = await checkVideoGeneration(videoGenId);
+
+      if (result.status === "complete") {
+        // Download from Leonardo (temporary URL) and upload to Supabase for permanence
+        const videoRes = await fetch(result.videoUrl!);
+        if (!videoRes.ok) {
+          throw new Error(`Failed to download video from Leonardo (${videoRes.status})`);
+        }
+        const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+        const filename = `posts/${id}-${Date.now()}.mp4`;
+        const storageUrl = await uploadVideoToStorage(videoBuffer, filename);
+
+        await db
+          .from("posts")
+          .update({
+            image_urls: [storageUrl],
+            metadata: { ...meta, video_gen_phase: "complete" },
+          })
+          .eq("id", id);
+
+        return NextResponse.json({ status: "complete", video_url: storageUrl });
+      }
+
+      if (result.status === "failed") {
+        await db.from("posts").update({ metadata: { ...meta, video_gen_phase: null } }).eq("id", id);
+        return NextResponse.json({ error: "Video generation failed" }, { status: 500 });
+      }
+
+      return NextResponse.json({ status: "generating_video" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await db.from("posts").update({ metadata: { ...meta, video_gen_phase: null } }).eq("id", id);
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ status: "unknown" });
 }

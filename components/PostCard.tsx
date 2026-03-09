@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Post } from "@/lib/supabase";
 import {
   Clock,
@@ -62,11 +62,28 @@ export default function PostCard({ post }: PostCardProps) {
   const [currentScheduledAt, setCurrentScheduledAt] = useState(post.scheduled_at ?? "");
   const [currentStatus, setCurrentStatus] = useState(post.status);
   const [error, setError] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(post.image_urls?.[0] ?? null);
+  const isReel = (post.metadata as Record<string, unknown>)?.post_type === "reel";
+
+  // Image state (non-reel posts)
+  const [imageUrl, setImageUrl] = useState<string | null>(
+    isReel ? null : (post.image_urls?.[0] ?? null)
+  );
   const [generatingImage, setGeneratingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
-  const [generatingVideo, setGeneratingVideo] = useState(false);
+
+  // Video state (reel posts) — persists pipeline phase across page reloads via DB
+  const initialVideoPhase = (() => {
+    const meta = post.metadata as Record<string, unknown>;
+    const phase = meta?.video_gen_phase as string | undefined;
+    if (phase === "complete" || (!phase && post.image_urls?.[0] && isReel)) return "complete";
+    return phase ?? "idle";
+  })();
+  const [videoPhase, setVideoPhase] = useState<string>(initialVideoPhase);
+  const [videoUrl, setVideoUrl] = useState<string | null>(
+    isReel ? (post.image_urls?.[0] ?? null) : null
+  );
   const [videoError, setVideoError] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   /** Convert UTC ISO string → "YYYY-MM-DDTHH:mm" in browser local time for datetime-local input */
   function toDatetimeLocal(iso: string): string {
@@ -189,20 +206,86 @@ export default function PostCard({ post }: PostCardProps) {
     }
   }
 
+  // ── Video polling helpers ──────────────────────────────────────────────────
+
+  function startPolling(postId: string) {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/posts/${postId}/generate-video`);
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setVideoError(data.error ?? "Generation failed");
+          setVideoPhase("idle");
+          clearInterval(pollingRef.current!);
+          pollingRef.current = null;
+          return;
+        }
+        setVideoPhase(data.status ?? "idle");
+        if (data.status === "complete") {
+          setVideoUrl(data.video_url ?? null);
+          clearInterval(pollingRef.current!);
+          pollingRef.current = null;
+        }
+      } catch {
+        // Network blip — keep polling
+      }
+    }, 5000);
+  }
+
+  // Resume polling if a generation was in-flight when the page loaded
+  useEffect(() => {
+    if (isReel && (initialVideoPhase === "generating_image" || initialVideoPhase === "image" ||
+                   initialVideoPhase === "generating_video" || initialVideoPhase === "video")) {
+      startPolling(post.id);
+    }
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleGenerateVideo() {
-    setGeneratingVideo(true);
     setVideoError(null);
+    setVideoPhase("generating_image");
+    try {
+      const res = await fetch(`/api/posts/${post.id}/generate-video`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setVideoPhase("idle");
+        setVideoError(data.error ?? "Failed to start generation");
+        return;
+      }
+      if (data.status === "complete") {
+        setVideoUrl(data.video_url ?? null);
+        setVideoPhase("complete");
+        return;
+      }
+      setVideoPhase(data.status ?? "generating_image");
+      startPolling(post.id);
+    } catch (err) {
+      setVideoPhase("idle");
+      setVideoError(err instanceof Error ? err.message : "Error starting video generation");
+    }
+  }
+
+  async function handleRegenerateVideo() {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+    setVideoError(null);
+    setVideoPhase("generating_image");
     try {
       const res = await fetch(`/api/posts/${post.id}/generate-video`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restart: true }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Video generation failed");
-      setImageUrl(data.video_url); // reuse imageUrl state for the stored URL
+      if (!res.ok) { setVideoPhase("idle"); setVideoError(data.error ?? "Failed to start"); return; }
+      setVideoPhase(data.status ?? "generating_image");
+      startPolling(post.id);
     } catch (err) {
-      setVideoError(err instanceof Error ? err.message : "Error generating video");
-    } finally {
-      setGeneratingVideo(false);
+      setVideoPhase("idle");
+      setVideoError(err instanceof Error ? err.message : "Error starting video generation");
     }
   }
 
@@ -411,34 +494,31 @@ export default function PostCard({ post }: PostCardProps) {
       )}
 
       {/* Leonardo Reel video generation */}
-      {(post.metadata as Record<string, unknown>)?.post_type === "reel" && (
+      {isReel && (
         <div className="mt-3 border border-pink-100 rounded-lg p-3 bg-pink-50/50">
           <div className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-1 text-xs text-pink-700 font-medium">
               🎬 Leonardo Motion SVD — ~4 sec Reel
             </span>
-            <button
-              onClick={handleGenerateVideo}
-              disabled={generatingVideo}
-              className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-pink-600 text-white hover:bg-pink-700 disabled:opacity-60 transition-colors"
-            >
-              {generatingVideo ? (
-                <>
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  Generating… (up to 5 min)
-                </>
-              ) : imageUrl ? (
-                <>
-                  <RefreshCw className="w-3 h-3" />
-                  Regenerate Video
-                </>
-              ) : (
-                <>
-                  <Wand2 className="w-3 h-3" />
-                  Generate Reel Video
-                </>
-              )}
-            </button>
+            {/* Show generate button only when idle or complete */}
+            {videoPhase === "idle" && (
+              <button
+                onClick={handleGenerateVideo}
+                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-pink-600 text-white hover:bg-pink-700 transition-colors"
+              >
+                <Wand2 className="w-3 h-3" />
+                Generate Reel Video
+              </button>
+            )}
+            {videoPhase === "complete" && (
+              <button
+                onClick={handleRegenerateVideo}
+                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md bg-pink-600 text-white hover:bg-pink-700 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Regenerate Video
+              </button>
+            )}
           </div>
 
           <div className="mt-1 text-xs text-pink-600">
@@ -446,14 +526,28 @@ export default function PostCard({ post }: PostCardProps) {
             {" · "}Model: <strong>{String((post.metadata as Record<string, unknown>).video_quality ?? "MOTION2FAST")}</strong>
           </div>
 
+          {/* Progress indicators */}
+          {(videoPhase === "generating_image" || videoPhase === "image") && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-pink-600">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Step 1/2: Generating source image…
+            </div>
+          )}
+          {(videoPhase === "generating_video" || videoPhase === "video") && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-pink-600">
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Step 2/2: Animating video… (up to ~4 min, checking every 5 s)
+            </div>
+          )}
+
           {videoError && (
             <p className="mt-2 text-xs text-red-600">{videoError}</p>
           )}
 
-          {imageUrl && !generatingVideo && (
+          {videoUrl && videoPhase === "complete" && (
             <div className="mt-3">
               <video
-                src={imageUrl}
+                src={videoUrl}
                 controls
                 loop
                 muted

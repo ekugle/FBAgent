@@ -75,7 +75,8 @@ export default function PostCard({ post }: PostCardProps) {
   const initialVideoPhase = (() => {
     const meta = post.metadata as Record<string, unknown>;
     const phase = meta?.video_gen_phase as string | undefined;
-    if (phase === "complete" || (!phase && post.image_urls?.[0] && isReel)) return "complete";
+    // Treat as complete if video is already saved to storage, regardless of DB phase flag
+    if (phase === "complete" || (isReel && post.image_urls?.[0])) return "complete";
     return phase ?? "idle";
   })();
   const [videoPhase, setVideoPhase] = useState<string>(initialVideoPhase);

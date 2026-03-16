@@ -108,14 +108,20 @@ export async function GET(
 
   const meta = (post.metadata ?? {}) as Record<string, unknown>;
   const phase = meta.video_gen_phase as string | undefined;
+  const isReel = (meta?.post_type as string | undefined) === "reel";
 
   if (!phase || phase === "idle") {
     return NextResponse.json({ status: "idle" });
   }
 
-  if (phase === "complete") {
-    const videoUrl = (post.image_urls as string[] | null)?.[0];
-    return NextResponse.json({ status: "complete", video_url: videoUrl });
+  // If the video is already saved (image_urls has a URL), self-heal the phase and return complete
+  const savedVideoUrl = (post.image_urls as string[] | null)?.[0];
+  if (phase === "complete" || (savedVideoUrl && isReel)) {
+    if (phase !== "complete" && savedVideoUrl) {
+      // Fix the stuck phase in DB
+      await db.from("posts").update({ metadata: { ...meta, video_gen_phase: "complete" } }).eq("id", id);
+    }
+    return NextResponse.json({ status: "complete", video_url: savedVideoUrl });
   }
 
   // ── Phase: waiting for image ──

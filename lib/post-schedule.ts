@@ -3,30 +3,124 @@
  * Safe to use in both server components and client components.
  */
 
-// ─── Business roster ──────────────────────────────────────────────────────────
+// ─── Business roster (grouped by vertical) ────────────────────────────────────
 
-export const HUSTLE_BUSINESSES = [
-  "plumber",
-  "DJ",
-  "hair stylist",
-  "landscaper",
-  "mobile mechanic",
-  "house painter",
-  "photographer",
-  "personal trainer",
-  "pet groomer",
-  "private chef",
-  "junk removal specialist",
-  "web designer",
-  "electrician",
-  "HVAC technician",
-  "pressure washer",
-  "handyman",
-  "dog walker",
-  "makeup artist",
-  "tattoo artist",
-  "catering company",
-] as const;
+export const HUSTLE_BUSINESSES_BY_VERTICAL: Record<string, string[]> = {
+  home_trades: [
+    "plumber",
+    "electrician",
+    "HVAC technician",
+    "handyman",
+    "roofer",
+    "drywall contractor",
+    "tile setter",
+    "flooring installer",
+    "insulation contractor",
+    "fence installer",
+  ],
+  outdoor_home: [
+    "house painter",
+    "pressure washer",
+    "landscaper",
+    "lawn care specialist",
+    "tree trimmer",
+    "gutter cleaner",
+    "pool cleaner",
+    "irrigation specialist",
+    "snow removal service",
+    "window cleaner",
+  ],
+  automotive: [
+    "mobile mechanic",
+    "auto detailer",
+    "windshield repair technician",
+    "tow truck operator",
+    "mobile tire technician",
+    "car wrap installer",
+  ],
+  health_wellness: [
+    "personal trainer",
+    "massage therapist",
+    "yoga instructor",
+    "nutritionist",
+    "life coach",
+    "chiropractor",
+    "acupuncturist",
+  ],
+  beauty_care: [
+    "hair stylist",
+    "makeup artist",
+    "nail technician",
+    "esthetician",
+    "barber",
+    "tattoo artist",
+    "lash technician",
+    "brow specialist",
+  ],
+  pets: [
+    "pet groomer",
+    "dog walker",
+    "dog trainer",
+    "pet sitter",
+    "mobile vet technician",
+  ],
+  events_entertainment: [
+    "DJ",
+    "photographer",
+    "videographer",
+    "event planner",
+    "wedding officiant",
+    "photo booth operator",
+    "live musician",
+  ],
+  food_culinary: [
+    "private chef",
+    "food truck owner",
+    "catering company",
+    "cake decorator",
+    "meal prep service",
+    "personal baker",
+  ],
+  creative_digital: [
+    "web designer",
+    "graphic designer",
+    "social media manager",
+    "video editor",
+    "brand photographer",
+    "copywriter",
+  ],
+  education_coaching: [
+    "music teacher",
+    "private tutor",
+    "sports coach",
+    "dance instructor",
+    "driving instructor",
+    "swim instructor",
+  ],
+  moving_logistics: [
+    "junk removal specialist",
+    "moving company owner",
+    "courier service",
+    "furniture assembler",
+  ],
+  cleaning: [
+    "house cleaner",
+    "commercial cleaner",
+    "carpet cleaner",
+    "post-construction cleaner",
+    "Airbnb turnover cleaner",
+  ],
+  security_safety: [
+    "locksmith",
+    "alarm system installer",
+    "security camera installer",
+  ],
+};
+
+/** Flat list kept for reference / backwards compat */
+export const HUSTLE_BUSINESSES: readonly string[] = Object.values(
+  HUSTLE_BUSINESSES_BY_VERTICAL
+).flat();
 
 export const WORD_POST_ANGLES = ["pain_point", "aspirational", "feature"] as const;
 export type WordPostAngle = (typeof WORD_POST_ANGLES)[number];
@@ -102,14 +196,49 @@ export function buildTypeSequence(): PostType[] {
   return seq;
 }
 
+/**
+ * Pick a business rotating through verticals so consecutive hustle posts
+ * never come from the same industry. Falls back gracefully when a vertical
+ * is exhausted.
+ */
+function pickBusiness(
+  usedBusinesses: string[],
+  usedVerticalsThisWeek: string[]
+): { business: string; vertical: string } {
+  const verticals = Object.keys(HUSTLE_BUSINESSES_BY_VERTICAL);
+
+  // Prefer a vertical not yet used this week; fall back to least-recently-used
+  const preferredVerticals = verticals.filter(
+    (v) => !usedVerticalsThisWeek.includes(v)
+  );
+  const candidateVerticals =
+    preferredVerticals.length > 0 ? preferredVerticals : verticals;
+
+  // Shuffle candidate verticals so we don't always pick the same first one
+  const shuffled = [...candidateVerticals].sort(() => Math.random() - 0.5);
+
+  for (const vertical of shuffled) {
+    const businesses = HUSTLE_BUSINESSES_BY_VERTICAL[vertical];
+    const available = businesses.filter((b) => !usedBusinesses.includes(b));
+    const pool = available.length > 0 ? available : businesses;
+    const business = pool[Math.floor(Math.random() * pool.length)];
+    return { business, vertical };
+  }
+
+  // Absolute fallback (should never reach here)
+  const all = HUSTLE_BUSINESSES as readonly string[];
+  return { business: all[Math.floor(Math.random() * all.length)], vertical: "home_trades" };
+}
+
 /** Assigns businesses and URLs to each slot, respecting repetition rules. */
 export function buildWeekPlan(
   typeSequence: PostType[],
-  usedBusinessesThisWeek: string[],
+  usedBusinessesRecently: string[],
   urls: Array<{ url: string; label: string }>
 ): SlotPlan[] {
   const plan: SlotPlan[] = [];
-  const usedBusinesses = [...usedBusinessesThisWeek];
+  const usedBusinesses = [...usedBusinessesRecently];
+  const usedVerticalsThisWeek: string[] = [];
   const usedUrlsByDay: Record<number, string[]> = {};
   let angleIdx = 0;
 
@@ -120,12 +249,10 @@ export function buildWeekPlan(
       const item: SlotPlan = { dayIndex: day, slotIndex: slot, postType };
 
       if (postType === "hustle") {
-        const available = (HUSTLE_BUSINESSES as readonly string[]).filter(
-          (b) => !usedBusinesses.includes(b)
-        );
-        const pool = available.length > 0 ? available : (HUSTLE_BUSINESSES as readonly string[]);
-        item.business = pool[Math.floor(Math.random() * pool.length)];
-        usedBusinesses.push(item.business);
+        const { business, vertical } = pickBusiness(usedBusinesses, usedVerticalsThisWeek);
+        item.business = business;
+        usedBusinesses.push(business);
+        usedVerticalsThisWeek.push(vertical);
       } else {
         item.angle = WORD_POST_ANGLES[angleIdx % WORD_POST_ANGLES.length];
         angleIdx++;

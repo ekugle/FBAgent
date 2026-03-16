@@ -40,11 +40,10 @@ export async function POST(req: NextRequest) {
       .eq("is_active", true);
     const urls = urlRows ?? [];
 
-    // 2. Load hustle tracking (which businesses were used this week)
+    // 2. Load hustle tracking (rolling list of recently used businesses)
     const trackingMemory = await getAgentMemory("hustle_tracking");
     const tracking = trackingMemory?.value as {
-      used_this_week: string[];
-      week_start: string;
+      used_recently: string[];
     } | null;
 
     const monday = week_start
@@ -54,10 +53,8 @@ export async function POST(req: NextRequest) {
 
     const customSlotHours: [number, number, number] = slot_hours ?? [7, 12, 18];
 
-    const usedThisWeek =
-      tracking?.week_start === weekStartStr
-        ? (tracking.used_this_week ?? [])
-        : [];
+    // Keep the last 40 used businesses so the list stays fresh across weeks
+    const usedThisWeek = tracking?.used_recently ?? [];
 
     // 3. Build the 21-slot plan
     const typeSequence = buildTypeSequence();
@@ -136,18 +133,19 @@ export async function POST(req: NextRequest) {
 
     if (insertError) throw insertError;
 
-    // 6. Update hustle tracking
+    // 6. Update hustle tracking — rolling list capped at 40 entries
     const newBusinesses = generated
       .filter((g) => g.slot.postType === "hustle" && g.slot.business && !g.error)
       .map((g) => g.slot.business!);
 
+    const updatedRecent = [
+      ...new Set([...usedThisWeek, ...newBusinesses]),
+    ].slice(-40);
+
     await setAgentMemory(
       "hustle_tracking",
-      {
-        used_this_week: [...new Set([...usedThisWeek, ...newBusinesses])],
-        week_start: weekStartStr,
-      },
-      "Tracks service businesses used this week to avoid repetition"
+      { used_recently: updatedRecent },
+      "Rolling list of the last ~40 service businesses used to avoid industry repetition across weeks"
     );
 
     const failedCount = generated.filter((g) => g.error).length;

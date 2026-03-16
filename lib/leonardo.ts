@@ -248,11 +248,21 @@ export async function checkVideoGeneration(generationId: string): Promise<{
   if (itovRes.ok) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const itovData = (await itovRes.json()) as any;
-    const itovGen = itovData?.generation_by_pk ?? itovData?.generations_by_pk;
+    const itovGen = itovData?.generation_by_pk ?? itovData?.generations_by_pk ?? itovData;
+    console.log(`checkVideoGeneration I2V(${generationId}): status=${itovGen?.status} keys=${Object.keys(itovGen ?? {}).join(",")}`);
     if (itovGen?.status === "COMPLETE") {
       const videoUrl: string | undefined =
-        itovGen.mp4URL || itovGen.motionMp4URL || itovGen.url || itovGen.motionMP4URL;
+        itovGen.mp4URL ||
+        itovGen.motionMp4URL ||
+        itovGen.motionMP4URL ||
+        itovGen.url ||
+        itovGen.generated_video?.url ||
+        itovGen.generated_video?.motionMp4URL ||
+        itovGen.generated_videos?.[0]?.url ||
+        itovGen.generated_videos?.[0]?.motionMp4URL;
       if (videoUrl) return { status: "complete", videoUrl };
+      // COMPLETE but URL not in expected fields — log everything for diagnostics
+      console.error("I2V COMPLETE but no URL found. Full response:\n", JSON.stringify(itovData, null, 2));
     }
     if (itovGen?.status === "FAILED") return { status: "failed" };
   }

@@ -164,15 +164,20 @@ export async function GET(
       const result = await checkVideoGeneration(videoGenId);
 
       if (result.status === "complete") {
-        // The MP4 URL is written back onto the SOURCE IMAGE generation, not the job record.
-        const { url: motionUrl, raw: imgRaw } = await getMotionVideoUrl(imageGenId);
+        // Prefer the URL already extracted by checkVideoGeneration (from the I2V job endpoint).
+        // Fall back to reading motionMp4URL from the source image generation record.
+        let motionUrl: string | undefined = result.videoUrl;
+
         if (!motionUrl) {
-          // Surface the raw image gen response so the client console can show it
-          console.log("Video COMPLETE but motionMp4URL still null on image gen. Raw:", JSON.stringify(imgRaw, null, 2));
-          return NextResponse.json({
-            status: "generating_video",
-            debug: `Video job complete but motionMp4URL not yet on image gen ${imageGenId}`,
-          });
+          const { url: fallbackUrl, raw: imgRaw } = await getMotionVideoUrl(imageGenId);
+          motionUrl = fallbackUrl;
+          if (!motionUrl) {
+            console.log("Video COMPLETE but motionMp4URL still null. Raw:", JSON.stringify(imgRaw, null, 2));
+            return NextResponse.json({
+              status: "generating_video",
+              debug: `Video job complete but URL not yet available for image gen ${imageGenId}`,
+            });
+          }
         }
 
         // Download from Leonardo (temporary URL) and upload to Supabase for permanence

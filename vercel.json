@@ -5,6 +5,10 @@
       "schedule": "0 9 * * 1-5"
     },
     {
+      "path": "/api/cron/sync-published",
+      "schedule": "0 * * * *"
+    },
+    {
       "path": "/api/cron/monitor",
       "schedule": "0 12 * * *"
     },
@@ -28,6 +32,9 @@
     },
     "app/api/cron/monitor/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/sync-published/route.ts": {
+      "maxDuration": 30
     }
   }
 }

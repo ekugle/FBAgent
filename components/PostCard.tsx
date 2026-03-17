@@ -580,9 +580,18 @@ export default function PostCard({ post }: PostCardProps) {
             </div>
           )}
           {(videoPhase === "generating_video" || videoPhase === "video") && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-pink-600">
-              <RefreshCw className="w-3 h-3 animate-spin" />
-              Step 2/2: Animating video… (up to ~4 min, checking every 5 s)
+            <div className="mt-2 flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-pink-600">
+                <RefreshCw className="w-3 h-3 animate-spin flex-shrink-0" />
+                Step 2/2: Animating video… (up to ~4 min, checking every 5 s)
+              </div>
+              <button
+                onClick={() => setRetrieveMode(!retrieveMode)}
+                className="flex-shrink-0 text-xs text-pink-500 underline hover:text-pink-800"
+                title="Video finished on Leonardo but not showing? Paste the URL here."
+              >
+                Already done? Paste URL
+              </button>
             </div>
           )}
 
@@ -601,8 +610,8 @@ export default function PostCard({ post }: PostCardProps) {
           )}
 
           {/* Retrieve from Leonardo URL */}
-          {(retrieveMode || videoPhase === "idle") && !videoUrl && (
-            <div className={`mt-2 ${retrieveMode ? "block" : "hidden"}`}>
+          {retrieveMode && !videoUrl && (
+            <div className="mt-2">
               <p className="text-xs text-pink-700 mb-1">Paste the Leonardo generation URL:</p>
               <div className="flex gap-2">
                 <input

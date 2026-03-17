@@ -166,26 +166,19 @@ export async function GET(
     const imageGenId = meta.video_image_gen_id as string;
 
     try {
-      // Check the video JOB for completion status
-      const result = await checkVideoGeneration(videoGenId);
+      // For MOTION2FAST, Leonardo writes the final URL onto the SOURCE IMAGE generation
+      // record, not on the video job. Check BOTH sources on every tick so we catch it
+      // the moment it appears — regardless of what the video job status reports.
+      const [jobResult, { url: imageGenUrl }] = await Promise.all([
+        checkVideoGeneration(videoGenId),
+        getMotionVideoUrl(imageGenId),
+      ]);
 
-      if (result.status === "complete") {
-        // Prefer the URL already extracted by checkVideoGeneration (from the I2V job endpoint).
-        // Fall back to reading motionMp4URL from the source image generation record.
-        let motionUrl: string | undefined = result.videoUrl;
+      console.log(`[video poll] post=${id} jobStatus=${jobResult.status} jobUrl=${jobResult.videoUrl ?? "null"} imageGenUrl=${imageGenUrl ?? "null"}`);
 
-        if (!motionUrl) {
-          const { url: fallbackUrl, raw: imgRaw } = await getMotionVideoUrl(imageGenId);
-          motionUrl = fallbackUrl;
-          if (!motionUrl) {
-            console.log("Video COMPLETE but motionMp4URL still null. Raw:", JSON.stringify(imgRaw, null, 2));
-            return NextResponse.json({
-              status: "generating_video",
-              debug: `Video job complete but URL not yet available for image gen ${imageGenId}`,
-            });
-          }
-        }
+      const motionUrl: string | undefined = jobResult.videoUrl ?? imageGenUrl ?? undefined;
 
+      if (motionUrl) {
         // Download from Leonardo (temporary URL) and upload to Supabase for permanence
         const videoRes = await fetch(motionUrl);
         if (!videoRes.ok) {
@@ -204,13 +197,12 @@ export async function GET(
           .eq("id", id);
         if (saveError) {
           console.error("Failed to save video URL to post:", saveError);
-          // Still return the URL so the client can display it even if DB save failed
         }
 
         return NextResponse.json({ status: "complete", video_url: storageUrl });
       }
 
-      if (result.status === "failed") {
+      if (jobResult.status === "failed") {
         await db.from("posts").update({ metadata: { ...meta, video_gen_phase: null } }).eq("id", id);
         return NextResponse.json({ error: "Video generation failed" }, { status: 500 });
       }

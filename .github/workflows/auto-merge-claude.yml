@@ -23,10 +23,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Merge Claude branch into main
+      - name: Merge Claude branch into Main
         run: |
-          git fetch origin main
-          git checkout main
+          git fetch origin Main
+          git checkout Main
           git merge --ff-only origin/${{ github.ref_name }} || \
-          git merge -X theirs origin/${{ github.ref_name }} -m "Auto-merge ${{ github.ref_name }} into main"
-          git push origin main
+          git merge -X theirs origin/${{ github.ref_name }} -m "Auto-merge ${{ github.ref_name }} into Main"
+          git push origin Main

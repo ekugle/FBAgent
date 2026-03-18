@@ -179,27 +179,32 @@ export async function GET(
       const motionUrl: string | undefined = jobResult.videoUrl ?? imageGenUrl ?? undefined;
 
       if (motionUrl) {
-        // Download from Leonardo (temporary URL) and upload to Supabase for permanence
-        const videoRes = await fetch(motionUrl);
-        if (!videoRes.ok) {
-          throw new Error(`Failed to download video from Leonardo (${videoRes.status})`);
-        }
-        const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
-        const filename = `posts/${id}-${Date.now()}.mp4`;
-        const storageUrl = await uploadVideoToStorage(videoBuffer, filename);
-
-        const { error: saveError } = await db
+        // Save Leonardo URL immediately so it's never lost even if Supabase upload times out
+        await db
           .from("posts")
           .update({
-            image_urls: [storageUrl],
+            image_urls: [motionUrl],
             metadata: { ...meta, video_gen_phase: "complete" },
           })
           .eq("id", id);
-        if (saveError) {
-          console.error("Failed to save video URL to post:", saveError);
+
+        // Try to upload to Supabase Storage for a permanent URL (best-effort)
+        let finalUrl = motionUrl;
+        try {
+          const videoRes = await fetch(motionUrl);
+          if (videoRes.ok) {
+            const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+            const filename = `posts/${id}-${Date.now()}.mp4`;
+            const storageUrl = await uploadVideoToStorage(videoBuffer, filename);
+            // Update with permanent Supabase URL
+            await db.from("posts").update({ image_urls: [storageUrl] }).eq("id", id);
+            finalUrl = storageUrl;
+          }
+        } catch (uploadErr) {
+          console.error("[video] Supabase upload failed, keeping Leonardo URL:", uploadErr);
         }
 
-        return NextResponse.json({ status: "complete", video_url: storageUrl });
+        return NextResponse.json({ status: "complete", video_url: finalUrl });
       }
 
       if (jobResult.status === "failed") {

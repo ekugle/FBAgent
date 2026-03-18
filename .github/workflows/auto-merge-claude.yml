@@ -30,3 +30,6 @@ jobs:
           git merge --ff-only origin/${{ github.ref_name }} || \
           git merge -X theirs origin/${{ github.ref_name }} -m "Auto-merge ${{ github.ref_name }} into Main"
           git push origin Main
+
+      - name: Delete Claude branch after merge
+        run: git push origin --delete ${{ github.ref_name }}

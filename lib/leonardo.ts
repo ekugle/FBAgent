@@ -220,7 +220,9 @@ export async function getMotionVideoUrl(imageGenId: string): Promise<{
     img?.motionMP4URL ||
     gen?.motionMp4URL ||
     gen?.generated_video?.url ||
-    gen?.generated_video?.motionMp4URL;
+    gen?.generated_video?.motionMp4URL ||
+    gen?.generated_videos?.[0]?.motionMp4URL ||
+    gen?.generated_videos?.[0]?.url;
 
   console.log(`getMotionVideoUrl(${imageGenId}): status=${gen?.status} url=${url ?? "null"}`);
   if (!url) {

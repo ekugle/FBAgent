@@ -74,6 +74,11 @@ export const AGENT_TOOLS: Anthropic.Tool[] = [
           description:
             "Your internal reasoning for this post: why this topic, why this angle, expected engagement",
         },
+        page_key: {
+          type: "string",
+          description:
+            "Which Facebook page to post to: 'tx2pay' or 'endorsements'. Defaults to 'tx2pay'.",
+        },
       },
       required: ["content", "agent_notes"],
     },
@@ -164,6 +169,7 @@ export async function executeTool(
       }
 
       case "create_draft_post": {
+        const pageKey = (toolInput.page_key as string | undefined) ?? "tx2pay";
         const post = await createPost({
           fb_post_id: null,
           content: toolInput.content as string,
@@ -175,7 +181,7 @@ export async function executeTool(
           approved_by: null,
           rejected_reason: null,
           agent_notes: toolInput.agent_notes as string,
-          metadata: {},
+          metadata: { page_key: pageKey },
         });
         return { success: true, data: { post_id: post.id, status: post.status } };
       }
@@ -185,6 +191,7 @@ export async function executeTool(
         const content = toolInput.content as string;
         const imageUrls = toolInput.image_urls as string[] | undefined;
         const scheduledAt = toolInput.scheduled_at as string | undefined;
+        const pageKey = toolInput.page_key as string | undefined;
 
         // FB requires scheduled time to be at least 10 min in the future
         const tenMinutesFromNow = new Date(Date.now() + 10 * 60 * 1000);
@@ -192,14 +199,14 @@ export async function executeTool(
           !!scheduledAt && new Date(scheduledAt) > tenMinutesFromNow;
 
         if (shouldSchedule) {
-          const result = await schedulePost(content, scheduledAt!, imageUrls);
+          const result = await schedulePost(content, scheduledAt!, imageUrls, pageKey);
           await updatePostStatus(postId, "scheduled", {
             fb_post_id: result.id,
             scheduled_at: scheduledAt,
           });
           return { success: true, data: { fb_post_id: result.id, status: "scheduled" } };
         } else {
-          const result = await publishPost(content, imageUrls);
+          const result = await publishPost(content, imageUrls, pageKey);
           await updatePostStatus(postId, "published", {
             fb_post_id: result.id,
             published_at: new Date().toISOString(),

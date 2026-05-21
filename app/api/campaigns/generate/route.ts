@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
         content_template: campaign.content_template,
         image_urls: campaign.image_urls ?? [],
         category: campaign.category ?? "",
+        page_key: campaign.page_key ?? "tx2pay",
         quantity,
         scheduled_times: scheduledTimes,
       },

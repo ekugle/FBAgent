@@ -1,11 +1,16 @@
 /**
- * Publer API client for publishing posts to the TX2Pay Facebook Business Page.
+ * Publer API client — handles publishing to multiple Facebook pages.
  *
- * Publer manages the Facebook OAuth/token — no FB App credentials needed for publishing.
- * API key is generated in Publer → Settings → Access & Login → API Keys (Business plan).
+ * Publer manages Facebook OAuth tokens so we never deal with FB App credentials.
+ * API key: Publer → Settings → Access & Login → API Keys (Business plan).
+ *
+ * Pages are identified by a pageKey ('tx2pay' | 'endorsements') which maps to
+ * the corresponding PUBLER_*_ACCOUNT_ID env var via lib/pages.ts.
  *
  * Docs: https://publer.com/docs
  */
+
+import { getAccountId } from "./pages";
 
 const PUBLER_BASE = "https://app.publer.com/api/v1";
 
@@ -102,8 +107,10 @@ async function waitForJob(jobId: string, maxAttempts = 5): Promise<string> {
  */
 export async function publishPost(
   message: string,
-  imageUrls?: string[]
+  imageUrls?: string[],
+  pageKey?: string
 ): Promise<PublishResult> {
+  const accountId = getAccountId(pageKey);
   const post: Record<string, unknown> = {
     networks: {
       facebook: {
@@ -111,7 +118,7 @@ export async function publishPost(
         text: message,
       },
     },
-    accounts: [{ id: process.env.PUBLER_FACEBOOK_ACCOUNT_ID! }],
+    accounts: [{ id: accountId }],
   };
 
   // Media lives at the post level, not inside networks.facebook
@@ -141,8 +148,10 @@ export async function publishPost(
 export async function schedulePost(
   message: string,
   scheduledAt: string, // ISO 8601 datetime string
-  imageUrls?: string[]
+  imageUrls?: string[],
+  pageKey?: string
 ): Promise<ScheduledPostResult> {
+  const accountId = getAccountId(pageKey);
   const post: Record<string, unknown> = {
     networks: {
       facebook: {
@@ -152,7 +161,7 @@ export async function schedulePost(
     },
     accounts: [
       {
-        id: process.env.PUBLER_FACEBOOK_ACCOUNT_ID!,
+        id: accountId,
         scheduled_at: scheduledAt,
       },
     ],
@@ -179,7 +188,8 @@ export async function schedulePost(
 // ─── Post retrieval ───────────────────────────────────────────────────────────
 
 interface PublerPostsResponse {
-  data: PublerPost[];
+  posts: PublerPost[];
+  total?: number;
 }
 
 /**
@@ -200,7 +210,7 @@ export async function getPagePosts(
     `/posts?account_id=${process.env.PUBLER_FACEBOOK_ACCOUNT_ID!}&limit=${limit}&status=published`
   );
 
-  return (data.data ?? []).map((p) => ({
+  return (data.posts ?? []).map((p) => ({
     // Prefer the native Facebook post ID for downstream comment matching
     id: p.external_id ?? p.id,
     message: p.text,

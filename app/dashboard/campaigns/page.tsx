@@ -12,12 +12,19 @@ import {
   Loader2,
 } from "lucide-react";
 
+const PAGE_OPTIONS = [
+  { key: "tx2pay", label: "TX2Pay", color: "blue" },
+  { key: "endorsements", label: "eEndorsements.com", color: "purple" },
+] as const;
+type PageKey = "tx2pay" | "endorsements";
+
 interface Campaign {
   id: string;
   name: string;
   description: string | null;
   content_template: string;
   image_urls: string[] | null;
+  page_key: PageKey;
   category: string | null;
   is_active: boolean;
   created_at: string;
@@ -38,6 +45,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
   const [description, setDescription] = useState("");
   const [contentTemplate, setContentTemplate] = useState("");
   const [category, setCategory] = useState("");
+  const [pageKey, setPageKey] = useState<PageKey>("tx2pay");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +57,7 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
       const res = await fetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description: description || undefined, content_template: contentTemplate, category: category || undefined }),
+        body: JSON.stringify({ name, description: description || undefined, content_template: contentTemplate, category: category || undefined, page_key: pageKey }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create campaign");
@@ -105,6 +113,25 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
               <option value="industry_insights">Industry Insights</option>
               <option value="behind_the_scenes">Behind the Scenes</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Facebook Page</label>
+            <div className="flex gap-2">
+              {PAGE_OPTIONS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => setPageKey(p.key)}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                    pageKey === p.key
+                      ? "border-blue-500 bg-blue-50 text-blue-700"
+                      : "border-gray-300 text-gray-600 hover:border-gray-400"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Post Content Template</label>
@@ -197,7 +224,16 @@ function BatchLaunchModal({
           <Play className="w-5 h-5 text-purple-500" />
           Launch Campaign Batch
         </h2>
-        <p className="text-sm text-gray-500 mb-4">{campaign.name}</p>
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm text-gray-500">{campaign.name}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+            campaign.page_key === "endorsements"
+              ? "bg-purple-50 text-purple-700"
+              : "bg-blue-50 text-blue-700"
+          }`}>
+            {PAGE_OPTIONS.find(p => p.key === campaign.page_key)?.label ?? "TX2Pay"}
+          </span>
+        </div>
 
         {!result ? (
           <div className="space-y-4">
@@ -343,10 +379,17 @@ function CampaignCard({
     <div className="card p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h3 className="font-semibold text-gray-900 truncate">{campaign.name}</h3>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+              campaign.page_key === "endorsements"
+                ? "bg-purple-50 text-purple-700"
+                : "bg-blue-50 text-blue-700"
+            }`}>
+              {PAGE_OPTIONS.find(p => p.key === campaign.page_key)?.label ?? "TX2Pay"}
+            </span>
             {campaign.category && (
-              <span className="badge bg-blue-50 text-blue-700 border-blue-200 text-xs shrink-0">
+              <span className="badge bg-gray-100 text-gray-600 border-gray-200 text-xs shrink-0">
                 {categoryLabels[campaign.category] ?? campaign.category}
               </span>
             )}

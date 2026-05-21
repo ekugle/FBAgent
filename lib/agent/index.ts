@@ -279,9 +279,11 @@ ${(ctx.image_urls as string[]).length > 0 ? `Images to attach: ${JSON.stringify(
 Schedule each post at these exact times:
 ${times}
 
+Target Facebook page: ${ctx.page_key === "endorsements" ? "eEndorsements.com" : "TX2Pay"} (page_key: "${ctx.page_key ?? "tx2pay"}")
+
 Instructions:
 1. Call create_draft_post ${ctx.quantity} times — once per scheduled time above
-2. Each post must include the scheduled_at from the list above
+2. Each post must include the scheduled_at from the list above AND page_key: "${ctx.page_key ?? "tx2pay"}"
 3. Vary the opening hook across posts so they feel fresh, but keep the core message consistent
 4. In agent_notes for each post, include: "Campaign: ${ctx.campaign_name}"
 5. After all drafts are created, summarize what was generated

@@ -94,6 +94,7 @@ export async function PATCH(
 
       const postContent = content ?? post.content;
       const imageUrls = post.image_urls ?? undefined;
+      const pageKey = (post.metadata?.page_key as string | undefined) ?? "tx2pay";
 
       const tenMinsFromNow = new Date(Date.now() + 10 * 60 * 1000);
       const willSchedule =
@@ -102,7 +103,7 @@ export async function PATCH(
 
       try {
         if (willSchedule) {
-          const result = await schedulePost(postContent, effectiveScheduledAt!, imageUrls);
+          const result = await schedulePost(postContent, effectiveScheduledAt!, imageUrls, pageKey);
           await updatePostStatus(id, "scheduled", {
             approved_by,
             fb_post_id: result.id,
@@ -110,7 +111,7 @@ export async function PATCH(
           });
           return NextResponse.json({ success: true, status: "scheduled", fb_post_id: result.id });
         } else {
-          const result = await publishPost(postContent, imageUrls);
+          const result = await publishPost(postContent, imageUrls, pageKey);
           await updatePostStatus(id, "published", {
             approved_by,
             fb_post_id: result.id,

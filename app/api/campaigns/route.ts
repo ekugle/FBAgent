@@ -13,6 +13,7 @@ const CreateCampaignSchema = z.object({
   content_template: z.string().min(1).max(63206),
   image_urls: z.array(z.string().url()).optional(),
   category: z.string().optional(),
+  page_key: z.enum(["tx2pay", "endorsements"]).default("tx2pay"),
 });
 
 export async function GET() {

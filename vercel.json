@@ -24,6 +24,12 @@
     "app/api/agent/route.ts": {
       "maxDuration": 120
     },
+    "app/api/campaigns/generate/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/content/generate-week/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/cron/publish/route.ts": {
       "maxDuration": 120
     },

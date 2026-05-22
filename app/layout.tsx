@@ -3,9 +3,9 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 
 export const metadata: Metadata = {
-  title: "TX2Pay | Facebook Business Agent",
+  title: "Social Agent",
   description:
-    "AI-powered social media management for TX2Pay's Facebook Business Page",
+    "AI-powered social media content management across multiple Facebook pages",
 };
 
 export default function RootLayout({

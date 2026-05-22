@@ -35,8 +35,8 @@ export default function Sidebar() {
           <Zap className="w-5 h-5 text-white" />
         </div>
         <div>
-          <div className="text-white font-bold text-sm">TX2Pay</div>
-          <div className="text-gray-400 text-xs">FB Business Agent</div>
+          <div className="text-white font-bold text-sm">Social Agent</div>
+          <div className="text-gray-400 text-xs">AI Content Manager</div>
         </div>
       </div>
 

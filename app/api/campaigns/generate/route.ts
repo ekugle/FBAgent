@@ -3,9 +3,9 @@
  * Batch-generate post drafts from a campaign template and schedule them.
  *
  * Body:
- *   campaign_id   — UUID of the campaign to use
- *   quantity      — number of posts to generate (1-30)
- *   start_date    — ISO date string for the first post (e.g. "2026-03-10T09:00:00")
+ *   campaign_id    — UUID of the campaign to use
+ *   quantity       — number of posts to generate (1-30)
+ *   start_date     — ISO date string for the first post (e.g. "2026-03-10T09:00:00")
  *   frequency_days — days between each post (default 2)
  */
 
@@ -13,6 +13,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 import { runAgent } from "@/lib/agent";
 import { z } from "zod";
+
+export const maxDuration = 120;
 
 const GenerateSchema = z.object({
   campaign_id: z.string().uuid(),
@@ -55,6 +57,9 @@ export async function POST(req: NextRequest) {
       scheduledTimes.push(new Date(ms).toISOString());
     }
 
+    // Record time just before the agent run so we can tag posts created during it
+    const runStartTime = new Date().toISOString();
+
     // Run the agent with campaign_batch trigger
     const result = await runAgent({
       trigger: "campaign_batch",
@@ -70,6 +75,27 @@ export async function POST(req: NextRequest) {
         scheduled_times: scheduledTimes,
       },
     });
+
+    // Tag all agent-created posts from this run with the campaign_id
+    if (result.success) {
+      await db
+        .from("posts")
+        .update({ campaign_id: campaign.id })
+        .eq("created_by", "agent")
+        .is("campaign_id", null)
+        .gte("created_at", runStartTime);
+    }
+
+    // If the campaign has auto_enabled, advance next_auto_run
+    if (campaign.auto_enabled && campaign.auto_frequency_days) {
+      const nextRun = new Date(
+        Date.now() + campaign.auto_frequency_days * 24 * 60 * 60 * 1000
+      ).toISOString();
+      await db
+        .from("campaigns")
+        .update({ next_auto_run: nextRun })
+        .eq("id", campaign.id);
+    }
 
     return NextResponse.json(result);
   } catch {

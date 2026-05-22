@@ -182,6 +182,7 @@ export async function executeTool(
           rejected_reason: null,
           agent_notes: toolInput.agent_notes as string,
           metadata: { page_key: pageKey },
+          campaign_id: null,
         });
         return { success: true, data: { post_id: post.id, status: post.status } };
       }

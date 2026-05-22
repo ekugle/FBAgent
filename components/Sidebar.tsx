@@ -7,7 +7,6 @@ import {
   FileText,
   MessageSquare,
   BarChart3,
-  Bot,
   Zap,
   Megaphone,
   CalendarDays,
@@ -22,7 +21,6 @@ const navigation = [
   { name: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
   { name: "Comments", href: "/dashboard/comments", icon: MessageSquare },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-  { name: "Agent Runs", href: "/dashboard/agent", icon: Bot },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

@@ -29,8 +29,16 @@ export interface Post {
   rejected_reason: string | null;
   agent_notes: string | null;
   metadata: Record<string, unknown>;
+  campaign_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CampaignStats {
+  total: number;
+  by_status: Record<string, number>;
+  avg_engagement_rate: number | null;
+  avg_reach: number | null;
 }
 
 export interface Comment {
@@ -259,6 +267,50 @@ export async function getRecentAnalytics(
     .limit(limit);
   if (error) throw error;
   return data ?? [];
+}
+
+export async function getCampaignStats(campaignId: string): Promise<CampaignStats> {
+  const db = createServerClient();
+
+  // Count posts by status
+  const { data: posts, error } = await db
+    .from("posts")
+    .select("id, status")
+    .eq("campaign_id", campaignId);
+
+  if (error) throw error;
+
+  const total = posts?.length ?? 0;
+  const by_status: Record<string, number> = {};
+  for (const p of posts ?? []) {
+    by_status[p.status] = (by_status[p.status] ?? 0) + 1;
+  }
+
+  // Try to get avg engagement from post_analytics
+  let avg_engagement_rate: number | null = null;
+  let avg_reach: number | null = null;
+
+  if (total > 0) {
+    const postIds = (posts ?? []).map((p) => p.id);
+    const { data: analytics } = await db
+      .from("post_analytics")
+      .select("engagement_rate, reach")
+      .in("post_id", postIds);
+
+    if (analytics && analytics.length > 0) {
+      const engagements = analytics.map((a) => a.engagement_rate).filter((v) => v != null);
+      const reaches = analytics.map((a) => a.reach).filter((v) => v != null);
+      if (engagements.length > 0) {
+        avg_engagement_rate =
+          engagements.reduce((s, v) => s + v, 0) / engagements.length;
+      }
+      if (reaches.length > 0) {
+        avg_reach = Math.round(reaches.reduce((s, v) => s + v, 0) / reaches.length);
+      }
+    }
+  }
+
+  return { total, by_status, avg_engagement_rate, avg_reach };
 }
 
 /**

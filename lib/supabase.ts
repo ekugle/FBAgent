@@ -165,7 +165,11 @@ export async function createPost(
   post: Omit<Post, "id" | "created_at" | "updated_at">
 ): Promise<Post> {
   const db = createServerClient();
-  const { data, error } = await db.from("posts").insert(post).select().single();
+  // Omit campaign_id from insert when null/undefined — the column may not
+  // exist yet before migration 005 runs; after migration it defaults to NULL.
+  const insertData: Record<string, unknown> = { ...post };
+  if (insertData.campaign_id == null) delete insertData.campaign_id;
+  const { data, error } = await db.from("posts").insert(insertData).select().single();
   if (error) throw error;
   return data;
 }

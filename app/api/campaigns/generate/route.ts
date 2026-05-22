@@ -76,25 +76,35 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Tag all agent-created posts from this run with the campaign_id
+    // Tag all agent-created posts from this run with the campaign_id.
+    // Wrapped in try/catch: column may not exist before migration 005 runs.
     if (result.success) {
-      await db
-        .from("posts")
-        .update({ campaign_id: campaign.id })
-        .eq("created_by", "agent")
-        .is("campaign_id", null)
-        .gte("created_at", runStartTime);
+      try {
+        await db
+          .from("posts")
+          .update({ campaign_id: campaign.id })
+          .eq("created_by", "agent")
+          .is("campaign_id", null)
+          .gte("created_at", runStartTime);
+      } catch {
+        // migration 005 not yet applied — tagging skipped, posts still created
+      }
     }
 
-    // If the campaign has auto_enabled, advance next_auto_run
+    // If the campaign has auto_enabled, advance next_auto_run.
+    // Wrapped in try/catch: column may not exist before migration 005 runs.
     if (campaign.auto_enabled && campaign.auto_frequency_days) {
-      const nextRun = new Date(
-        Date.now() + campaign.auto_frequency_days * 24 * 60 * 60 * 1000
-      ).toISOString();
-      await db
-        .from("campaigns")
-        .update({ next_auto_run: nextRun })
-        .eq("id", campaign.id);
+      try {
+        const nextRun = new Date(
+          Date.now() + campaign.auto_frequency_days * 24 * 60 * 60 * 1000
+        ).toISOString();
+        await db
+          .from("campaigns")
+          .update({ next_auto_run: nextRun })
+          .eq("id", campaign.id);
+      } catch {
+        // migration 005 not yet applied — next_auto_run not advanced
+      }
     }
 
     return NextResponse.json(result);

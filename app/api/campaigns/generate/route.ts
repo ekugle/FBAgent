@@ -106,12 +106,38 @@ Requirements:
 - Each post must be completely distinct (different angle, hook, scenario, or business type)
 - Follow the template/instructions precisely
 - Include relevant hashtags on every post
+- Call the save_posts tool with all ${quantity} posts`;
 
-Return ONLY a valid JSON array with exactly ${quantity} objects and nothing else outside the array. Each object must have these two keys:
-- "content": the complete post text including hashtags
-- "agent_notes": one short sentence explaining your creative choice for this post
-
-[{"content": "...", "agent_notes": "..."}, ...]`;
+  // Use tool_use to force structured output — the SDK handles all
+  // serialization (special chars, apostrophes, emojis) so no JSON.parse needed.
+  const postsToolSchema = {
+    name: "save_posts",
+    description: "Save the generated post drafts",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        posts: {
+          type: "array",
+          description: `Exactly ${quantity} post drafts`,
+          items: {
+            type: "object",
+            properties: {
+              content: {
+                type: "string",
+                description: "Complete post text including hashtags",
+              },
+              agent_notes: {
+                type: "string",
+                description: "One sentence explaining the creative choice",
+              },
+            },
+            required: ["content", "agent_notes"],
+          },
+        },
+      },
+      required: ["posts"],
+    },
+  };
 
   let generated: Array<{ content: string; agent_notes: string }> = [];
 
@@ -120,16 +146,20 @@ Return ONLY a valid JSON array with exactly ${quantity} objects and nothing else
       model: "claude-sonnet-4-6",
       max_tokens: 8096,
       system: systemPrompt,
+      tools: [postsToolSchema],
+      tool_choice: { type: "tool", name: "save_posts" },
       messages: [{ role: "user", content: userMessage }],
     });
 
-    const rawText =
-      response.content.find((b) => b.type === "text")?.text ?? "[]";
-
-    // Extract the JSON array, tolerating markdown code fences
-    const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) throw new Error("Claude did not return a JSON array");
-    generated = JSON.parse(jsonMatch[0]);
+    // The SDK validates tool input against the schema — always valid, no parsing
+    const toolUse = response.content.find((b) => b.type === "tool_use");
+    if (!toolUse || toolUse.type !== "tool_use") {
+      throw new Error("Claude did not call save_posts");
+    }
+    const toolInput = toolUse.input as {
+      posts: Array<{ content: string; agent_notes: string }>;
+    };
+    generated = toolInput.posts ?? [];
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json(

@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient, createPost } from "@/lib/supabase";
+import { createServerClient } from "@/lib/supabase";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
@@ -168,42 +168,48 @@ Requirements:
     );
   }
 
-  // Create each post draft in Supabase
+  // Create each post draft in Supabase directly (no helper wrapper so
+  // Supabase's PostgrestError.message is always accessible)
   const createdIds: string[] = [];
   const errors: string[] = [];
 
   for (let i = 0; i < Math.min(generated.length, quantity); i++) {
-    try {
-      const post = await createPost({
-        fb_post_id: null,
-        content: generated[i].content,
-        image_urls: campaign.image_urls ?? null,
-        status: "pending_approval",
-        scheduled_at: scheduledTimes[i] ?? null,
-        published_at: null,
-        created_by: "agent",
-        approved_by: null,
-        rejected_reason: null,
-        agent_notes: `Campaign: ${campaign.name}. ${generated[i].agent_notes}`,
-        metadata: {
-          page_key: campaign.page_key ?? "tx2pay",
-          post_type: "campaign",
-          campaign_name: campaign.name,
-        },
-        campaign_id: null,
-      });
-      createdIds.push(post.id);
-    } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
+    const insertPayload: Record<string, unknown> = {
+      content: generated[i].content,
+      status: "pending_approval",
+      scheduled_at: scheduledTimes[i] ?? null,
+      created_by: "agent",
+      agent_notes: `Campaign: ${campaign.name}. ${generated[i].agent_notes}`,
+      metadata: {
+        page_key: campaign.page_key ?? "tx2pay",
+        post_type: "campaign",
+        campaign_name: campaign.name,
+      },
+    };
+    // Only include image_urls if the campaign has some
+    if (campaign.image_urls && campaign.image_urls.length > 0) {
+      insertPayload.image_urls = campaign.image_urls;
+    }
+
+    const { data: postData, error: insertError } = await db
+      .from("posts")
+      .insert(insertPayload)
+      .select("id")
+      .single();
+
+    if (insertError) {
+      const msg = insertError.message ?? JSON.stringify(insertError);
+      console.error(`[campaigns/generate] insert error (post ${i + 1}):`, msg, JSON.stringify(insertError));
+      errors.push(msg);
+    } else if (postData) {
+      createdIds.push(postData.id);
     }
   }
 
   if (createdIds.length === 0) {
+    const detail = errors[0] ?? "unknown error";
     return NextResponse.json(
-      {
-        success: false,
-        error: `Failed to save posts: ${errors[0] ?? "unknown error"}`,
-      },
+      { success: false, error: `Failed to save posts: ${detail}` },
       { status: 500 }
     );
   }

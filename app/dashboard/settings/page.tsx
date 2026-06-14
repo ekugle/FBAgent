@@ -1,17 +1,24 @@
 /**
- * Settings — shows connected Facebook pages via Publer.
- * No Facebook OAuth required — Publer manages all FB tokens.
+ * Settings — connected pages + content configuration.
  */
 
 import { Settings, CheckCircle, Facebook } from "lucide-react";
+import { createServerClient } from "@/lib/supabase";
+import UrlManager from "@/components/UrlManager";
 
 const PAGES = [
   { label: "TX2Pay", envKey: "PUBLER_FACEBOOK_ACCOUNT_ID" },
   { label: "eEndorsements.com", envKey: "PUBLER_ENDORSEMENTS_ACCOUNT_ID" },
 ];
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
   const allConfigured = PAGES.every((p) => !!process.env[p.envKey]);
+
+  const db = createServerClient();
+  const { data: urls } = await db
+    .from("word_post_urls")
+    .select("*")
+    .order("created_at", { ascending: true });
 
   return (
     <div className="p-8 max-w-2xl">
@@ -71,7 +78,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Publer link */}
-      <div className="card p-6">
+      <div className="card p-6 mb-6">
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
           Manage in Publer
         </h2>
@@ -87,6 +94,9 @@ export default function SettingsPage() {
           Open Publer Accounts →
         </a>
       </div>
+
+      {/* Word Post URL Rotation */}
+      <UrlManager initialUrls={urls ?? []} />
     </div>
   );
 }

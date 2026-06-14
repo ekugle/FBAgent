@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import QuickPostSlot from "./QuickPostSlot";
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -22,7 +22,6 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
 };
 
-// Only these statuses can be dragged to reschedule
 const DRAGGABLE = new Set(["pending_approval", "draft", "scheduled"]);
 
 type PostRow = {
@@ -64,13 +63,17 @@ interface Props {
 export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props) {
   const [posts, setPosts] = useState<PostRow[]>(initialPosts);
   const [dragOverSlot, setDragOverSlot] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [flashError, setFlashError] = useState<string | null>(null);
+
+  // Enter-counter per slot: eliminates dragLeave flickering when moving over
+  // child elements inside the same drop zone (the classic enter/leave problem).
+  const enterCounters = useRef<Record<string, number>>({});
 
   const monday = new Date(mondayStr + "T00:00:00Z");
   const today = new Date().toISOString().split("T")[0];
 
-  // Recompute slot map from live post state (enables optimistic updates)
   const slotMap: Record<string, PostRow[]> = {};
   for (const post of posts) {
     if (!post.scheduled_at) continue;
@@ -80,18 +83,60 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
     (slotMap[key] ??= []).push(post);
   }
 
-  function handleDragStart(e: React.DragEvent, postId: string) {
+  const handleDragStart = useCallback((e: React.DragEvent, postId: string) => {
     e.dataTransfer.setData("postId", postId);
     e.dataTransfer.effectAllowed = "move";
-  }
+    setDraggingId(postId);
+    // Slight delay so React can re-render the "dragging" opacity before the ghost image is captured
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`post-${postId}`);
+      if (el) el.style.opacity = "0.4";
+    });
+  }, []);
 
-  async function handleDrop(
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDragOverSlot(null);
+    enterCounters.current = {};
+    // Restore opacity on all posts
+    document.querySelectorAll("[id^='post-']").forEach((el) => {
+      (el as HTMLElement).style.opacity = "";
+    });
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent, slotKey: string) => {
+    e.preventDefault();
+    const count = (enterCounters.current[slotKey] ?? 0) + 1;
+    enterCounters.current[slotKey] = count;
+    if (count === 1) setDragOverSlot(slotKey);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent, slotKey: string) => {
+    e.preventDefault();
+    const count = Math.max(0, (enterCounters.current[slotKey] ?? 0) - 1);
+    enterCounters.current[slotKey] = count;
+    if (count === 0) setDragOverSlot((prev) => (prev === slotKey ? null : prev));
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    // No state update here — dragEnter handles slot tracking
+  }, []);
+
+  const handleDrop = useCallback(async (
     e: React.DragEvent,
     dayIdx: number,
-    slotIdx: number
-  ) {
+    slotIdx: number,
+    slotKey: string
+  ) => {
     e.preventDefault();
+    enterCounters.current[slotKey] = 0;
     setDragOverSlot(null);
+    setDraggingId(null);
+    document.querySelectorAll("[id^='post-']").forEach((el) => {
+      (el as HTMLElement).style.opacity = "";
+    });
 
     const postId = e.dataTransfer.getData("postId");
     if (!postId) return;
@@ -102,15 +147,19 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
     const newScheduledAt = slotDate.toISOString();
 
     const post = posts.find((p) => p.id === postId);
-    if (!post || post.scheduled_at === newScheduledAt) return;
+    if (!post) return;
+
+    // Don't re-save if dropped on the same slot
+    const currentSlot = post.scheduled_at
+      ? getSlotKey(post.scheduled_at, monday)
+      : null;
+    if (currentSlot?.dayIndex === dayIdx && currentSlot?.slotIndex === slotIdx) return;
 
     const prevScheduledAt = post.scheduled_at;
 
-    // Optimistic move
+    // Optimistic update
     setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId ? { ...p, scheduled_at: newScheduledAt } : p
-      )
+      prev.map((p) => p.id === postId ? { ...p, scheduled_at: newScheduledAt } : p)
     );
     setSavingId(postId);
     setFlashError(null);
@@ -126,11 +175,9 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
         throw new Error(d.error ?? "Reschedule failed");
       }
     } catch (err) {
-      // Revert on failure
+      // Revert
       setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId ? { ...p, scheduled_at: prevScheduledAt } : p
-        )
+        prev.map((p) => p.id === postId ? { ...p, scheduled_at: prevScheduledAt } : p)
       );
       const msg = err instanceof Error ? err.message : "Reschedule failed";
       setFlashError(msg);
@@ -138,7 +185,7 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
     } finally {
       setSavingId(null);
     }
-  }
+  }, [monday, posts]);
 
   return (
     <>
@@ -164,18 +211,10 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
                 key={day}
                 className={`px-2 py-3 text-center border-l border-gray-200 ${isToday ? "bg-blue-50" : ""}`}
               >
-                <div
-                  className={`text-xs font-semibold uppercase tracking-wide ${
-                    isToday ? "text-blue-600" : "text-gray-500"
-                  }`}
-                >
+                <div className={`text-xs font-semibold uppercase tracking-wide ${isToday ? "text-blue-600" : "text-gray-500"}`}>
                   {day}
                 </div>
-                <div
-                  className={`text-sm font-bold ${
-                    isToday ? "text-blue-700" : "text-gray-700"
-                  }`}
-                >
+                <div className={`text-sm font-bold ${isToday ? "text-blue-700" : "text-gray-700"}`}>
                   {date.getUTCDate()}
                 </div>
               </div>
@@ -190,9 +229,7 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
             className="grid grid-cols-8 border-b border-gray-100 last:border-0"
           >
             <div className="px-3 py-4 bg-gray-50 border-r border-gray-200 flex items-center">
-              <span className="text-xs font-semibold text-gray-500">
-                {slotLabel}
-              </span>
+              <span className="text-xs font-semibold text-gray-500">{slotLabel}</span>
             </div>
 
             {DAY_NAMES.map((_, dayIdx) => {
@@ -215,26 +252,21 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
               return (
                 <div
                   key={dayIdx}
-                  className={`px-2 py-2 border-l border-gray-100 min-h-[130px] transition-colors relative ${
+                  className={`px-2 py-2 border-l border-gray-100 min-h-[130px] relative transition-colors duration-100 ${
                     isDragOver
                       ? "bg-blue-50 ring-2 ring-inset ring-blue-400"
+                      : draggingId
+                      ? "hover:bg-blue-50/50"
                       : "hover:bg-gray-50"
                   }`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    setDragOverSlot(slotKey);
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setDragOverSlot(null);
-                    }
-                  }}
-                  onDrop={(e) => handleDrop(e, dayIdx, slotIdx)}
+                  onDragEnter={(e) => handleDragEnter(e, slotKey)}
+                  onDragLeave={(e) => handleDragLeave(e, slotKey)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, dayIdx, slotIdx, slotKey)}
                 >
                   {isDragOver && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <span className="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-0.5 rounded">
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                      <span className="text-xs font-semibold text-blue-600 bg-blue-100 border border-blue-300 px-2 py-1 rounded-md shadow-sm">
                         Drop to reschedule
                       </span>
                     </div>
@@ -243,52 +275,36 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
                   {slotPosts.length > 0 ? (
                     <div className="space-y-2">
                       {slotPosts.map((post) => {
-                        const meta = post.metadata as
-                          | Record<string, unknown>
-                          | undefined;
+                        const meta = post.metadata as Record<string, unknown> | undefined;
                         const isDraggable = DRAGGABLE.has(post.status);
                         const isSaving = savingId === post.id;
+                        const isBeingDragged = draggingId === post.id;
 
                         return (
                           <div
                             key={post.id}
+                            id={`post-${post.id}`}
                             draggable={isDraggable}
-                            onDragStart={
-                              isDraggable
-                                ? (e) => handleDragStart(e, post.id)
-                                : undefined
-                            }
-                            title={
-                              isDraggable
-                                ? "Drag to reschedule"
-                                : "Published posts can't be rescheduled"
-                            }
+                            onDragStart={isDraggable ? (e) => handleDragStart(e, post.id) : undefined}
+                            onDragEnd={isDraggable ? handleDragEnd : undefined}
+                            title={isDraggable ? "Drag to reschedule" : "Published posts can't be rescheduled"}
                             className={`space-y-1 rounded transition-opacity ${
                               isDraggable
                                 ? "cursor-grab active:cursor-grabbing select-none"
                                 : "cursor-default"
-                            } ${isSaving ? "opacity-40" : ""}`}
+                            } ${isSaving || isBeingDragged ? "opacity-40" : ""}`}
                           >
                             <div className="flex flex-wrap gap-1">
-                              <span
-                                className={`badge text-xs ${
-                                  STATUS_COLORS[post.status] ??
-                                  "bg-gray-100 text-gray-600"
-                                }`}
-                              >
+                              <span className={`badge text-xs ${STATUS_COLORS[post.status] ?? "bg-gray-100 text-gray-600"}`}>
                                 {STATUS_LABELS[post.status] ?? post.status}
                               </span>
                               {!!meta?.post_type && (
-                                <span
-                                  className={`badge text-xs ${
-                                    String(meta.post_type) === "hustle"
-                                      ? "bg-orange-100 text-orange-700"
-                                      : "bg-sky-100 text-sky-700"
-                                  }`}
-                                >
-                                  {String(meta.post_type) === "hustle"
-                                    ? "Hustle"
-                                    : "Word"}
+                                <span className={`badge text-xs ${
+                                  String(meta.post_type) === "hustle"
+                                    ? "bg-orange-100 text-orange-700"
+                                    : "bg-sky-100 text-sky-700"
+                                }`}>
+                                  {String(meta.post_type) === "hustle" ? "Hustle" : "Word"}
                                 </span>
                               )}
                             </div>
@@ -301,10 +317,7 @@ export default function CalendarGrid({ initialPosts, monday: mondayStr }: Props)
                       })}
                     </div>
                   ) : (
-                    <QuickPostSlot
-                      slotDatetime={slotDatetime}
-                      slotLabel={slotLabelStr}
-                    />
+                    <QuickPostSlot slotDatetime={slotDatetime} slotLabel={slotLabelStr} />
                   )}
                 </div>
               );

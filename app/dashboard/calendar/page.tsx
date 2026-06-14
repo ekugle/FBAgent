@@ -4,7 +4,6 @@ import { getCurrentWeekMonday } from "@/lib/post-schedule";
 import CalendarControls from "@/components/CalendarControls";
 import CalendarGrid from "@/components/CalendarGrid";
 import BusinessFilter from "@/components/BusinessFilter";
-import UrlManager from "@/components/UrlManager";
 
 interface Props {
   searchParams: Promise<{ week?: string; page?: string }>;
@@ -35,11 +34,6 @@ export default async function CalendarPage({ searchParams }: Props) {
   if (pageKey) query = query.eq("metadata->>page_key", pageKey);
 
   const { data: posts } = await query;
-
-  const { data: urls } = await db
-    .from("word_post_urls")
-    .select("*")
-    .order("created_at", { ascending: true });
 
   const mondayStr = monday.toISOString().split("T")[0];
   const prevWeekStr = new Date(monday.getTime() - 7 * 24 * 60 * 60 * 1000)
@@ -109,8 +103,6 @@ export default async function CalendarPage({ searchParams }: Props) {
       </div>
 
       <CalendarGrid initialPosts={posts ?? []} monday={mondayStr} />
-
-      <UrlManager initialUrls={urls ?? []} />
     </div>
   );
 }

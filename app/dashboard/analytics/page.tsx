@@ -1,4 +1,5 @@
 import { createServerClient } from "@/lib/supabase";
+import BusinessFilter from "@/components/BusinessFilter";
 import {
   BarChart3,
   TrendingUp,
@@ -9,8 +10,20 @@ import {
   Share2,
 } from "lucide-react";
 
-export default async function AnalyticsPage() {
+interface Props {
+  searchParams: Promise<{ page?: string }>;
+}
+
+export default async function AnalyticsPage({ searchParams }: Props) {
+  const { page: pageKey = "" } = await searchParams;
   const db = createServerClient();
+
+  // post_analytics can be filtered by the linked post's page_key
+  let postQuery = db
+    .from("post_analytics")
+    .select("*, posts(content, published_at, metadata)")
+    .order("fetched_at", { ascending: false })
+    .limit(10);
 
   const [analyticsResult, postAnalyticsResult] = await Promise.all([
     db
@@ -18,15 +31,19 @@ export default async function AnalyticsPage() {
       .select("*")
       .order("period_start", { ascending: false })
       .limit(14),
-    db
-      .from("post_analytics")
-      .select("*, posts(content, published_at)")
-      .order("fetched_at", { ascending: false })
-      .limit(10),
+    postQuery,
   ]);
 
   const analytics = analyticsResult.data ?? [];
-  const postAnalytics = postAnalyticsResult.data ?? [];
+  const allPostAnalytics = postAnalyticsResult.data ?? [];
+
+  // Filter post analytics client-side via joined post metadata
+  const postAnalytics = pageKey
+    ? allPostAnalytics.filter((pa) => {
+        const post = pa.posts as { metadata?: { page_key?: string } } | null;
+        return post?.metadata?.page_key === pageKey;
+      })
+    : allPostAnalytics;
 
   const latest = analytics[0];
   const previous = analytics[1];
@@ -84,14 +101,17 @@ export default async function AnalyticsPage() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-blue-500" />
-          Analytics
-        </h1>
-        <p className="text-gray-500 mt-1">
-          TX2Pay Facebook Page performance metrics
-        </p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-blue-500" />
+            Analytics
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Facebook page performance metrics
+          </p>
+        </div>
+        <BusinessFilter current={pageKey} />
       </div>
 
       {/* No data state */}

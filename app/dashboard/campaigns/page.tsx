@@ -609,6 +609,22 @@ function CampaignCard({
   );
 }
 
+const ALL_CATEGORIES = [
+  { value: "", label: "All Types" },
+  { value: "payment_tips", label: "Payment Tips" },
+  { value: "product_features", label: "Product Features" },
+  { value: "small_business_finance", label: "SMB Finance" },
+  { value: "customer_success", label: "Customer Success" },
+  { value: "industry_insights", label: "Industry Insights" },
+  { value: "behind_the_scenes", label: "Behind the Scenes" },
+];
+
+const PAGE_FILTER_OPTIONS = [
+  { value: "", label: "All Businesses" },
+  { value: "tx2pay", label: "TX2Pay" },
+  { value: "endorsements", label: "eEndorsements" },
+];
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CampaignsPage() {
@@ -617,6 +633,8 @@ export default function CampaignsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<Campaign | null>(null);
   const [activeLaunch, setActiveLaunch] = useState<Campaign | null>(null);
+  const [filterPage, setFilterPage] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true);
@@ -633,10 +651,15 @@ export default function CampaignsPage() {
     fetchCampaigns();
   }, [fetchCampaigns]);
 
+  const filtered = campaigns.filter((c) => {
+    if (filterPage && c.page_key !== filterPage) return false;
+    if (filterCategory && c.category !== filterCategory) return false;
+    return true;
+  });
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Megaphone className="w-6 h-6 text-blue-500" />
@@ -652,26 +675,76 @@ export default function CampaignsPage() {
         </button>
       </div>
 
+      {/* Filters */}
+      <div className="flex items-center gap-3 mb-6">
+        {/* Business filter */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          {PAGE_FILTER_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setFilterPage(opt.value)}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                filterPage === opt.value
+                  ? opt.value === "endorsements"
+                    ? "bg-white text-purple-700 shadow-sm"
+                    : opt.value === "tx2pay"
+                    ? "bg-white text-blue-700 shadow-sm"
+                    : "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Category filter */}
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+        >
+          {ALL_CATEGORIES.map((cat) => (
+            <option key={cat.value} value={cat.value}>{cat.label}</option>
+          ))}
+        </select>
+
+        {(filterPage || filterCategory) && (
+          <button
+            onClick={() => { setFilterPage(""); setFilterCategory(""); }}
+            className="text-xs text-gray-400 hover:text-gray-600 underline"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-400">
           <Loader2 className="w-6 h-6 animate-spin mr-2" />
           Loading campaigns…
         </div>
-      ) : campaigns.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="card p-12 text-center">
           <Megaphone className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">No campaigns yet</p>
-          <p className="text-sm text-gray-400 mt-1 mb-4">
-            Create a campaign template to start generating and scheduling posts.
-          </p>
-          <button onClick={() => setShowCreate(true)} className="btn-primary mx-auto">
-            <Plus className="w-4 h-4" />
-            Create First Campaign
-          </button>
+          {campaigns.length === 0 ? (
+            <>
+              <p className="text-gray-500 font-medium">No campaigns yet</p>
+              <p className="text-sm text-gray-400 mt-1 mb-4">
+                Create a campaign template to start generating and scheduling posts.
+              </p>
+              <button onClick={() => setShowCreate(true)} className="btn-primary mx-auto">
+                <Plus className="w-4 h-4" />
+                Create First Campaign
+              </button>
+            </>
+          ) : (
+            <p className="text-gray-500">No campaigns match the current filters.</p>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
-          {campaigns.map((c) => (
+          {filtered.map((c) => (
             <CampaignCard
               key={c.id}
               campaign={c}

@@ -13,13 +13,13 @@ export default function CalendarControls({ prevWeek, nextWeek }: Props) {
   return (
     <div className="flex items-center gap-1">
       <Link
-        href={`/dashboard/calendar?week=${prevWeek}`}
+        href={prevWeek.startsWith("/") ? prevWeek : `/dashboard/calendar?week=${prevWeek}`}
         className="btn-secondary py-1.5 px-2"
       >
         <ChevronLeft className="w-4 h-4" />
       </Link>
       <Link
-        href={`/dashboard/calendar?week=${nextWeek}`}
+        href={nextWeek.startsWith("/") ? nextWeek : `/dashboard/calendar?week=${nextWeek}`}
         className="btn-secondary py-1.5 px-2"
       >
         <ChevronRight className="w-4 h-4" />

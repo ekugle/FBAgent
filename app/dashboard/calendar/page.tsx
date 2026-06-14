@@ -3,14 +3,15 @@ import { Calendar } from "lucide-react";
 import { getCurrentWeekMonday } from "@/lib/post-schedule";
 import CalendarControls from "@/components/CalendarControls";
 import CalendarGrid from "@/components/CalendarGrid";
+import BusinessFilter from "@/components/BusinessFilter";
 import UrlManager from "@/components/UrlManager";
 
 interface Props {
-  searchParams: Promise<{ week?: string }>;
+  searchParams: Promise<{ week?: string; page?: string }>;
 }
 
 export default async function CalendarPage({ searchParams }: Props) {
-  const { week } = await searchParams;
+  const { week, page: pageKey = "" } = await searchParams;
 
   let monday: Date;
   if (week) {
@@ -24,12 +25,16 @@ export default async function CalendarPage({ searchParams }: Props) {
 
   const db = createServerClient();
 
-  const { data: posts } = await db
+  let query = db
     .from("posts")
     .select("id, content, status, scheduled_at, metadata")
     .gte("scheduled_at", monday.toISOString())
     .lt("scheduled_at", sunday.toISOString())
     .order("scheduled_at", { ascending: true });
+
+  if (pageKey) query = query.eq("metadata->>page_key", pageKey);
+
+  const { data: posts } = await query;
 
   const { data: urls } = await db
     .from("word_post_urls")
@@ -44,7 +49,6 @@ export default async function CalendarPage({ searchParams }: Props) {
     .toISOString()
     .split("T")[0];
 
-  // Count filled slots server-side for the header
   const filledSlots = new Set<string>();
   for (const post of posts ?? []) {
     if (!post.scheduled_at) continue;
@@ -63,9 +67,16 @@ export default async function CalendarPage({ searchParams }: Props) {
     filledSlots.add(`${dayIndex}-${slotIndex}`);
   }
 
+  // Build week nav hrefs that preserve business filter
+  function weekHref(weekStr: string) {
+    const params = new URLSearchParams({ week: weekStr });
+    if (pageKey) params.set("page", pageKey);
+    return `/dashboard/calendar?${params.toString()}`;
+  }
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Calendar className="w-6 h-6 text-blue-500" />
@@ -87,17 +98,17 @@ export default async function CalendarPage({ searchParams }: Props) {
             <span className="text-gray-400 text-sm">drag posts to reschedule</span>
           </p>
         </div>
-        <CalendarControls
-          weekStart={mondayStr}
-          prevWeek={prevWeekStr}
-          nextWeek={nextWeekStr}
-        />
+        <div className="flex items-center gap-3">
+          <BusinessFilter current={pageKey} extraParams={{ week: mondayStr }} />
+          <CalendarControls
+            weekStart={mondayStr}
+            prevWeek={weekHref(prevWeekStr)}
+            nextWeek={weekHref(nextWeekStr)}
+          />
+        </div>
       </div>
 
-      <CalendarGrid
-        initialPosts={posts ?? []}
-        monday={mondayStr}
-      />
+      <CalendarGrid initialPosts={posts ?? []} monday={mondayStr} />
 
       <UrlManager initialUrls={urls ?? []} />
     </div>

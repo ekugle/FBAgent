@@ -174,19 +174,26 @@ Requirements:
   const errors: string[] = [];
 
   for (let i = 0; i < Math.min(generated.length, quantity); i++) {
+    // Guard: Claude occasionally returns null/empty content despite the schema
+    const content = generated[i]?.content?.trim();
+    if (!content) {
+      console.error(`[campaigns/generate] post ${i + 1} has empty content — skipping`);
+      errors.push(`Post ${i + 1}: Claude returned empty content`);
+      continue;
+    }
+
     const insertPayload: Record<string, unknown> = {
-      content: generated[i].content,
+      content,
       status: "pending_approval",
       scheduled_at: scheduledTimes[i] ?? null,
       created_by: "agent",
-      agent_notes: `Campaign: ${campaign.name}. ${generated[i].agent_notes}`,
+      agent_notes: `Campaign: ${campaign.name}. ${generated[i].agent_notes ?? ""}`.trim(),
       metadata: {
         page_key: campaign.page_key ?? "tx2pay",
         post_type: "campaign",
         campaign_name: campaign.name,
       },
     };
-    // Only include image_urls if the campaign has some
     if (campaign.image_urls && campaign.image_urls.length > 0) {
       insertPayload.image_urls = campaign.image_urls;
     }
@@ -199,7 +206,7 @@ Requirements:
 
     if (insertError) {
       const msg = insertError.message ?? JSON.stringify(insertError);
-      console.error(`[campaigns/generate] insert error (post ${i + 1}):`, msg, JSON.stringify(insertError));
+      console.error(`[campaigns/generate] insert error (post ${i + 1}):`, msg);
       errors.push(msg);
     } else if (postData) {
       createdIds.push(postData.id);

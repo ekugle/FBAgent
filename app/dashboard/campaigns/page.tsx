@@ -12,9 +12,7 @@ import {
   Loader2,
   Pencil,
   Trash2,
-  Clock,
   BarChart2,
-  RefreshCw,
 } from "lucide-react";
 
 const PAGE_OPTIONS = [
@@ -32,10 +30,6 @@ interface Campaign {
   page_key: PageKey;
   category: string | null;
   is_active: boolean;
-  auto_enabled: boolean;
-  auto_frequency_days: number;
-  auto_quantity: number;
-  next_auto_run: string | null;
   created_at: string;
 }
 
@@ -71,10 +65,6 @@ interface CampaignFormValues {
   contentTemplate: string;
   category: string;
   pageKey: PageKey;
-  autoEnabled: boolean;
-  autoFrequencyDays: number;
-  autoQuantity: number;
-  nextAutoRun: string; // datetime-local string or ""
 }
 
 const DEFAULT_FORM: CampaignFormValues = {
@@ -83,10 +73,6 @@ const DEFAULT_FORM: CampaignFormValues = {
   contentTemplate: "",
   category: "",
   pageKey: "tx2pay",
-  autoEnabled: false,
-  autoFrequencyDays: 7,
-  autoQuantity: 3,
-  nextAutoRun: "",
 };
 
 function campaignToForm(c: Campaign): CampaignFormValues {
@@ -96,12 +82,6 @@ function campaignToForm(c: Campaign): CampaignFormValues {
     contentTemplate: c.content_template,
     category: c.category ?? "",
     pageKey: c.page_key,
-    autoEnabled: c.auto_enabled,
-    autoFrequencyDays: c.auto_frequency_days,
-    autoQuantity: c.auto_quantity,
-    nextAutoRun: c.next_auto_run
-      ? new Date(c.next_auto_run).toISOString().slice(0, 16)
-      : "",
   };
 }
 
@@ -179,69 +159,6 @@ function CampaignForm({
         />
         <p className="text-xs text-gray-400 mt-1">{values.contentTemplate.length} characters</p>
       </div>
-
-      {/* Auto-schedule */}
-      <div className="border border-gray-200 rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-700">Auto-Schedule</p>
-            <p className="text-xs text-gray-400">Automatically generate posts on a recurring schedule</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onChange({ ...values, autoEnabled: !values.autoEnabled })}
-            className={`relative w-10 h-6 rounded-full transition-colors ${values.autoEnabled ? "bg-blue-500" : "bg-gray-300"}`}
-          >
-            <span
-              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${values.autoEnabled ? "translate-x-4" : "translate-x-0"}`}
-            />
-          </button>
-        </div>
-
-        {values.autoEnabled && (
-          <>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Posts per run</label>
-                <select
-                  value={values.autoQuantity}
-                  onChange={(e) => onChange({ ...values, autoQuantity: parseInt(e.target.value) })}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400"
-                >
-                  {[1, 2, 3, 5, 7, 10].map((n) => (
-                    <option key={n} value={n}>{n} post{n !== 1 ? "s" : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Repeat every</label>
-                <select
-                  value={values.autoFrequencyDays}
-                  onChange={(e) => onChange({ ...values, autoFrequencyDays: parseInt(e.target.value) })}
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value={1}>1 day</option>
-                  <option value={2}>2 days</option>
-                  <option value={3}>3 days</option>
-                  <option value={7}>1 week</option>
-                  <option value={14}>2 weeks</option>
-                  <option value={30}>1 month</option>
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">First auto-run (optional)</label>
-              <input
-                type="datetime-local"
-                value={values.nextAutoRun}
-                onChange={(e) => onChange({ ...values, nextAutoRun: e.target.value })}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400"
-              />
-              <p className="text-xs text-gray-400 mt-1">Leave blank to start tomorrow at 9am CT.</p>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -257,20 +174,6 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
     e.preventDefault();
     setLoading(true);
     setError(null);
-
-    // Default next_auto_run to tomorrow 9am CT if auto enabled and no date set
-    let nextAutoRun: string | null = null;
-    if (values.autoEnabled) {
-      if (values.nextAutoRun) {
-        nextAutoRun = new Date(values.nextAutoRun).toISOString();
-      } else {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setUTCHours(14, 0, 0, 0); // 9am CDT
-        nextAutoRun = tomorrow.toISOString();
-      }
-    }
-
     try {
       const res = await fetch("/api/campaigns", {
         method: "POST",
@@ -285,21 +188,6 @@ function CreateCampaignModal({ onClose, onCreated }: { onClose: () => void; onCr
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create campaign");
-
-      // If auto enabled, patch the new campaign with schedule config
-      if (values.autoEnabled) {
-        await fetch(`/api/campaigns/${data.campaign.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            auto_enabled: true,
-            auto_frequency_days: values.autoFrequencyDays,
-            auto_quantity: values.autoQuantity,
-            next_auto_run: nextAutoRun,
-          }),
-        });
-      }
-
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -352,19 +240,6 @@ function EditCampaignModal({
     e.preventDefault();
     setLoading(true);
     setError(null);
-
-    let nextAutoRun: string | null = null;
-    if (values.autoEnabled) {
-      if (values.nextAutoRun) {
-        nextAutoRun = new Date(values.nextAutoRun).toISOString();
-      } else if (!campaign.next_auto_run) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        tomorrow.setUTCHours(14, 0, 0, 0);
-        nextAutoRun = tomorrow.toISOString();
-      }
-    }
-
     try {
       const res = await fetch(`/api/campaigns/${campaign.id}`, {
         method: "PATCH",
@@ -375,10 +250,6 @@ function EditCampaignModal({
           content_template: values.contentTemplate,
           category: values.category || undefined,
           page_key: values.pageKey,
-          auto_enabled: values.autoEnabled,
-          auto_frequency_days: values.autoFrequencyDays,
-          auto_quantity: values.autoQuantity,
-          next_auto_run: nextAutoRun,
         }),
       });
       const data = await res.json();
@@ -425,14 +296,14 @@ function BatchLaunchModal({
   campaign: Campaign;
   onClose: () => void;
 }) {
-  const [quantity, setQuantity] = useState(campaign.auto_quantity ?? 3);
+  const [quantity, setQuantity] = useState(3);
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
     d.setMinutes(0, 0, 0);
     d.setHours(9);
     return d.toISOString().slice(0, 16);
   });
-  const [frequencyDays, setFrequencyDays] = useState(campaign.auto_frequency_days ?? 2);
+  const [frequencyDays, setFrequencyDays] = useState(2);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BatchResult | null>(null);
 
@@ -619,15 +490,6 @@ function CampaignCard({
     }
   }
 
-  const nextRunLabel = campaign.next_auto_run
-    ? new Date(campaign.next_auto_run).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
-
   return (
     <div className="card p-5">
       <div className="flex items-start justify-between gap-3">
@@ -646,15 +508,6 @@ function CampaignCard({
               <span className="badge bg-gray-100 text-gray-600 border-gray-200 text-xs shrink-0">
                 {CATEGORY_LABELS[campaign.category] ?? campaign.category}
               </span>
-            )}
-            {campaign.auto_enabled ? (
-              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium shrink-0">
-                <RefreshCw className="w-3 h-3" />
-                Every {campaign.auto_frequency_days}d
-                {nextRunLabel && <span className="font-normal text-emerald-600"> · Next {nextRunLabel}</span>}
-              </span>
-            ) : (
-              <span className="text-xs text-gray-400 shrink-0">Manual only</span>
             )}
           </div>
 
@@ -780,8 +633,6 @@ export default function CampaignsPage() {
     fetchCampaigns();
   }, [fetchCampaigns]);
 
-  const autoCampaigns = campaigns.filter((c) => c.auto_enabled);
-  const manualCampaigns = campaigns.filter((c) => !c.auto_enabled);
 
   return (
     <div className="p-8">
@@ -792,7 +643,7 @@ export default function CampaignsPage() {
             Campaigns
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Content templates for each Facebook page. Enable auto-schedule to run hands-free.
+            Content templates for each Facebook page. Launch batches manually when you&apos;re ready.
           </p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary">
@@ -819,48 +670,16 @@ export default function CampaignsPage() {
           </button>
         </div>
       ) : (
-        <div className="space-y-6">
-          {autoCampaigns.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-4 h-4 text-emerald-500" />
-                <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Auto-Scheduled</h2>
-              </div>
-              <div className="space-y-3">
-                {autoCampaigns.map((c) => (
-                  <CampaignCard
-                    key={c.id}
-                    campaign={c}
-                    onLaunch={setActiveLaunch}
-                    onEdit={setEditTarget}
-                    onDeleted={fetchCampaigns}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {manualCampaigns.length > 0 && (
-            <div>
-              {autoCampaigns.length > 0 && (
-                <div className="flex items-center gap-2 mb-3">
-                  <Play className="w-4 h-4 text-gray-400" />
-                  <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Manual Launch</h2>
-                </div>
-              )}
-              <div className="space-y-3">
-                {manualCampaigns.map((c) => (
-                  <CampaignCard
-                    key={c.id}
-                    campaign={c}
-                    onLaunch={setActiveLaunch}
-                    onEdit={setEditTarget}
-                    onDeleted={fetchCampaigns}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="space-y-3">
+          {campaigns.map((c) => (
+            <CampaignCard
+              key={c.id}
+              campaign={c}
+              onLaunch={setActiveLaunch}
+              onEdit={setEditTarget}
+              onDeleted={fetchCampaigns}
+            />
+          ))}
         </div>
       )}
 

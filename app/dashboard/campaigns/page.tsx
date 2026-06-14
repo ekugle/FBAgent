@@ -51,6 +51,7 @@ interface BatchResult {
 const CATEGORY_LABELS: Record<string, string> = {
   payment_tips: "Payment Tips",
   product_features: "Product Features",
+  word_post: "Word Post",
   small_business_finance: "SMB Finance",
   customer_success: "Customer Success",
   industry_insights: "Industry Insights",
@@ -127,6 +128,16 @@ function CampaignForm({
             <option key={k} value={k}>{v}</option>
           ))}
         </select>
+        {values.category === "word_post" && (
+          <p className="text-xs text-sky-600 mt-1.5 flex items-start gap-1">
+            <span>ℹ</span>
+            <span>
+              Word Post campaigns rotate through the URLs in{" "}
+              <a href="/dashboard/settings" target="_blank" className="underline">Settings → Word Post URL Rotation</a>.
+              Each generated post links to a different product page.
+            </span>
+          </p>
+        )}
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">Facebook Page</label>
@@ -155,7 +166,11 @@ function CampaignForm({
           required
           rows={7}
           className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-none"
-          placeholder="Write the base post content. Claude will use this as a template for all generated posts in this campaign."
+          placeholder={
+            values.category === "word_post"
+              ? "Describe the tone and style for word posts. Each post will automatically link to a different URL from the rotation. Example: Write an engaging educational post about a TX2Pay feature. Open with a question or surprising stat. Keep it conversational and end with a clear call-to-action to click the link."
+              : "Write the base post content. Claude will use this as a template for all generated posts in this campaign."
+          }
         />
         <p className="text-xs text-gray-400 mt-1">{values.contentTemplate.length} characters</p>
       </div>
@@ -613,6 +628,7 @@ const ALL_CATEGORIES = [
   { value: "", label: "All Types" },
   { value: "payment_tips", label: "Payment Tips" },
   { value: "product_features", label: "Product Features" },
+  { value: "word_post", label: "Word Post" },
   { value: "small_business_finance", label: "SMB Finance" },
   { value: "customer_success", label: "Customer Success" },
   { value: "industry_insights", label: "Industry Insights" },

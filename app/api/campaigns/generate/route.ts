@@ -59,6 +59,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
+  // For Word Post campaigns, fetch active URLs from the rotation list
+  const isWordPost = campaign.category === "word_post";
+  let wordPostUrls: Array<{ url: string; label: string }> = [];
+  if (isWordPost) {
+    const { data: urlRows } = await db
+      .from("word_post_urls")
+      .select("url, label")
+      .eq("is_active", true)
+      .order("created_at", { ascending: true });
+    wordPostUrls = urlRows ?? [];
+    if (wordPostUrls.length === 0) {
+      return NextResponse.json(
+        { error: "No active URLs in the Word Post rotation. Add URLs in Settings first." },
+        { status: 400 }
+      );
+    }
+  }
+
   // Build the list of scheduled datetimes
   const scheduledTimes: string[] = [];
   const startMs = new Date(start_date).getTime();
@@ -81,10 +99,24 @@ export async function POST(req: NextRequest) {
     )
     .join("\n");
 
+  // For word posts, assign one URL per post in round-robin order
+  const urlAssignments: Array<{ url: string; label: string } | null> = Array.from(
+    { length: quantity },
+    (_, i) => (isWordPost && wordPostUrls.length > 0 ? wordPostUrls[i % wordPostUrls.length] : null)
+  );
+
   const pageLabel =
     campaign.page_key === "endorsements" ? "eEndorsements.com" : "TX2Pay";
 
   const systemPrompt = `You are an expert social media content creator. You write compelling, authentic Facebook posts for small businesses. Follow the campaign instructions exactly and produce varied, distinct content.`;
+
+  // Build per-post URL assignment list for word post campaigns
+  const urlAssignmentBlock = isWordPost
+    ? `\nURL Assignment (each post MUST link to its assigned URL — include the full URL in the post):\n` +
+      urlAssignments
+        .map((u, i) => `Post ${i + 1}: ${u!.label} → ${u!.url}`)
+        .join("\n")
+    : "";
 
   const userMessage = `Generate exactly ${quantity} distinct Facebook post drafts for the "${campaign.name}" campaign.
 
@@ -100,12 +132,12 @@ ${campaign.content_template}
 
 Schedule (CT):
 ${ctTimes}
-
+${urlAssignmentBlock}
 Requirements:
 - Generate exactly ${quantity} posts
-- Each post must be completely distinct (different angle, hook, scenario, or business type)
+- Each post must be completely distinct (different angle, hook, or pain point)
 - Follow the template/instructions precisely
-- Include relevant hashtags on every post
+- Include relevant hashtags on every post${isWordPost ? "\n- Each post MUST include its assigned URL exactly as shown above" : ""}
 - Call the save_posts tool with all ${quantity} posts`;
 
   // Use tool_use to force structured output — the SDK handles all
@@ -190,8 +222,11 @@ Requirements:
       agent_notes: `Campaign: ${campaign.name}. ${generated[i].agent_notes ?? ""}`.trim(),
       metadata: {
         page_key: campaign.page_key ?? "tx2pay",
-        post_type: "campaign",
+        post_type: isWordPost ? "word" : "campaign",
         campaign_name: campaign.name,
+        ...(isWordPost && urlAssignments[i]
+          ? { url: urlAssignments[i]!.url, url_label: urlAssignments[i]!.label }
+          : {}),
       },
     };
     if (campaign.image_urls && campaign.image_urls.length > 0) {

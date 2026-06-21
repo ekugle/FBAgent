@@ -182,29 +182,53 @@ Requirements:
 
   let generated: Array<{ content: string; agent_notes: string }> = [];
 
-  try {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8096,
-      system: systemPrompt,
-      tools: [postsToolSchema],
-      tool_choice: { type: "tool", name: "save_posts" },
-      messages: [{ role: "user", content: userMessage }],
-    });
+  // Retry up to 3 attempts — Claude occasionally returns empty content on first try
+  let lastGenError = "";
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8096,
+        system: systemPrompt,
+        tools: [postsToolSchema],
+        tool_choice: { type: "tool", name: "save_posts" },
+        messages: [{ role: "user", content: userMessage }],
+      });
 
-    // The SDK validates tool input against the schema — always valid, no parsing
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
-      throw new Error("Claude did not call save_posts");
+      const toolUse = response.content.find((b) => b.type === "tool_use");
+      if (!toolUse || toolUse.type !== "tool_use") {
+        lastGenError = "Claude did not call save_posts";
+        console.error(`[campaigns/generate] attempt ${attempt}: no tool call — stop_reason=${response.stop_reason}`);
+        continue;
+      }
+      const toolInput = toolUse.input as {
+        posts: Array<{ content: string; agent_notes: string }>;
+      };
+      const posts = toolInput.posts ?? [];
+
+      // Log what Claude returned so we can debug empty-content issues
+      console.log(
+        `[campaigns/generate] attempt ${attempt}: got ${posts.length} posts, ` +
+        posts.map((p, i) => `post${i + 1}=${p.content?.length ?? 0}chars`).join(", ")
+      );
+
+      // Accept this attempt only if all posts have non-empty content
+      const allFilled = posts.length >= quantity && posts.every((p) => p.content?.trim());
+      if (allFilled) {
+        generated = posts;
+        break;
+      }
+      lastGenError = `${posts.filter((p) => !p.content?.trim()).length} post(s) returned empty content`;
+      console.error(`[campaigns/generate] attempt ${attempt}: ${lastGenError}`);
+    } catch (err) {
+      lastGenError = err instanceof Error ? err.message : String(err);
+      console.error(`[campaigns/generate] attempt ${attempt} threw:`, lastGenError);
     }
-    const toolInput = toolUse.input as {
-      posts: Array<{ content: string; agent_notes: string }>;
-    };
-    generated = toolInput.posts ?? [];
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  }
+
+  if (generated.length === 0) {
     return NextResponse.json(
-      { success: false, error: `Content generation failed: ${message}` },
+      { success: false, error: `Content generation failed after 3 attempts: ${lastGenError}` },
       { status: 500 }
     );
   }

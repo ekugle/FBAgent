@@ -346,7 +346,7 @@ function BatchLaunchModal({
           frequency_days: frequencyDays,
         }),
       });
-      let data: Record<string, unknown>;
+      let data: BatchResult;
       try {
         data = await res.json();
       } catch {

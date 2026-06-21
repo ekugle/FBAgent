@@ -201,24 +201,27 @@ Requirements:
         console.error(`[campaigns/generate] attempt ${attempt}: no tool call — stop_reason=${response.stop_reason}`);
         continue;
       }
-      const toolInput = toolUse.input as {
-        posts: Array<{ content: string; agent_notes: string }>;
-      };
-      const posts = toolInput.posts ?? [];
+      const rawInput = toolUse.input;
+      console.log(`[campaigns/generate] attempt ${attempt}: raw input type=${typeof rawInput}, keys=${Object.keys(rawInput as object ?? {}).join(",")}`);
+
+      const rawPosts = (rawInput as { posts?: unknown }).posts;
+      const posts: Array<{ content: string; agent_notes: string }> = Array.isArray(rawPosts) ? rawPosts : [];
 
       // Log what Claude returned so we can debug empty-content issues
       console.log(
         `[campaigns/generate] attempt ${attempt}: got ${posts.length} posts, ` +
-        posts.map((p, i) => `post${i + 1}=${p.content?.length ?? 0}chars`).join(", ")
+        posts.map((p, i) => `post${i + 1}=${String(p.content ?? "").length}chars`).join(", ")
       );
 
       // Accept this attempt only if all posts have non-empty content
-      const allFilled = posts.length >= quantity && posts.every((p) => p.content?.trim());
+      const allFilled = posts.length >= quantity && posts.every((p) => String(p.content ?? "").trim().length > 0);
       if (allFilled) {
         generated = posts;
         break;
       }
-      lastGenError = `${posts.filter((p) => !p.content?.trim()).length} post(s) returned empty content`;
+      lastGenError = Array.isArray(rawPosts)
+        ? `${posts.filter((p) => !String(p.content ?? "").trim()).length} post(s) returned empty content`
+        : `posts field is not an array (got ${typeof rawPosts}: ${JSON.stringify(rawPosts)?.slice(0, 100)})`;
       console.error(`[campaigns/generate] attempt ${attempt}: ${lastGenError}`);
     } catch (err) {
       lastGenError = err instanceof Error ? err.message : String(err);

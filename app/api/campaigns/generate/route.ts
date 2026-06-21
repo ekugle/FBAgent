@@ -59,6 +59,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
+  // Require a content template — without one Claude has nothing to work from
+  if (!campaign.content_template?.trim()) {
+    return NextResponse.json(
+      { error: "This campaign has no content template. Edit the campaign and add a template before launching." },
+      { status: 400 }
+    );
+  }
+
   // For Word Post campaigns, fetch active URLs from the rotation list
   const isWordPost = campaign.category === "word_post";
   let wordPostUrls: Array<{ url: string; label: string }> = [];
@@ -156,7 +164,8 @@ Requirements:
             properties: {
               content: {
                 type: "string",
-                description: "Complete post text including hashtags",
+                minLength: 1,
+                description: "Complete post text including hashtags (must not be empty)",
               },
               agent_notes: {
                 type: "string",
@@ -209,8 +218,8 @@ Requirements:
     // Guard: Claude occasionally returns null/empty content despite the schema
     const content = generated[i]?.content?.trim();
     if (!content) {
-      console.error(`[campaigns/generate] post ${i + 1} has empty content — skipping`);
-      errors.push(`Post ${i + 1}: Claude returned empty content`);
+      console.error(`[campaigns/generate] post ${i + 1} has empty content — skipping. Campaign template: "${campaign.content_template?.slice(0, 100)}"`);
+      errors.push(`Post ${i + 1}: Claude returned empty content — check that the campaign template has enough detail`);
       continue;
     }
 

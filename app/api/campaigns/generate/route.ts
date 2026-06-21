@@ -17,7 +17,7 @@ import { createServerClient } from "@/lib/supabase";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

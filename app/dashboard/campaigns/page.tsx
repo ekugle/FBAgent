@@ -346,7 +346,13 @@ function BatchLaunchModal({
           frequency_days: frequencyDays,
         }),
       });
-      const data = await res.json();
+      let data: Record<string, unknown>;
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON response (e.g. Vercel 504 timeout page)
+        data = { success: false, error: res.ok ? "Unexpected server response" : `Server error ${res.status} — generation may have timed out. Try fewer posts or try again.` };
+      }
       setResult(data);
     } catch (err) {
       setResult({ success: false, error: err instanceof Error ? err.message : "Network error" });

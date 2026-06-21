@@ -205,7 +205,12 @@ Requirements:
       console.log(`[campaigns/generate] attempt ${attempt}: raw input type=${typeof rawInput}, keys=${Object.keys(rawInput as object ?? {}).join(",")}`);
 
       const rawPosts = (rawInput as { posts?: unknown }).posts;
-      const posts: Array<{ content: string; agent_notes: string }> = Array.isArray(rawPosts) ? rawPosts : [];
+      // Claude occasionally returns the posts array as a JSON string — parse it if so
+      let resolvedPosts: unknown = rawPosts;
+      if (typeof rawPosts === "string") {
+        try { resolvedPosts = JSON.parse(rawPosts); } catch { /* leave as-is */ }
+      }
+      const posts: Array<{ content: string; agent_notes: string }> = Array.isArray(resolvedPosts) ? resolvedPosts : [];
 
       // Log what Claude returned so we can debug empty-content issues
       console.log(
@@ -219,9 +224,9 @@ Requirements:
         generated = posts;
         break;
       }
-      lastGenError = Array.isArray(rawPosts)
+      lastGenError = Array.isArray(resolvedPosts)
         ? `${posts.filter((p) => !String(p.content ?? "").trim()).length} post(s) returned empty content`
-        : `posts field is not an array (got ${typeof rawPosts}: ${JSON.stringify(rawPosts)?.slice(0, 100)})`;
+        : `posts field is not an array (got ${typeof resolvedPosts})`;
       console.error(`[campaigns/generate] attempt ${attempt}: ${lastGenError}`);
     } catch (err) {
       lastGenError = err instanceof Error ? err.message : String(err);

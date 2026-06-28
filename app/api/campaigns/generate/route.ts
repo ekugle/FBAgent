@@ -181,62 +181,47 @@ Requirements:
   };
 
   let generated: Array<{ content: string; agent_notes: string }> = [];
-
-  // Retry up to 3 attempts — Claude occasionally returns empty content on first try
   let lastGenError = "";
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8096,
-        system: systemPrompt,
-        tools: [postsToolSchema],
-        tool_choice: { type: "tool", name: "save_posts" },
-        messages: [{ role: "user", content: userMessage }],
-      });
 
-      const toolUse = response.content.find((b) => b.type === "tool_use");
-      if (!toolUse || toolUse.type !== "tool_use") {
-        lastGenError = "Claude did not call save_posts";
-        console.error(`[campaigns/generate] attempt ${attempt}: no tool call — stop_reason=${response.stop_reason}`);
-        continue;
-      }
-      const rawInput = toolUse.input;
-      console.log(`[campaigns/generate] attempt ${attempt}: raw input type=${typeof rawInput}, keys=${Object.keys(rawInput as object ?? {}).join(",")}`);
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8096,
+      system: systemPrompt,
+      tools: [postsToolSchema],
+      tool_choice: { type: "tool", name: "save_posts" },
+      messages: [{ role: "user", content: userMessage }],
+    });
 
-      const rawPosts = (rawInput as { posts?: unknown }).posts;
+    const toolUse = response.content.find((b) => b.type === "tool_use");
+    if (!toolUse || toolUse.type !== "tool_use") {
+      lastGenError = `Claude did not call save_posts (stop_reason=${response.stop_reason})`;
+    } else {
+      const rawPosts = (toolUse.input as { posts?: unknown }).posts;
       // Claude occasionally returns the posts array as a JSON string — parse it if so
       let resolvedPosts: unknown = rawPosts;
       if (typeof rawPosts === "string") {
         try { resolvedPosts = JSON.parse(rawPosts); } catch { /* leave as-is */ }
       }
-      const posts: Array<{ content: string; agent_notes: string }> = Array.isArray(resolvedPosts) ? resolvedPosts : [];
+      const allPosts: Array<{ content: string; agent_notes: string }> = Array.isArray(resolvedPosts) ? resolvedPosts : [];
 
-      // Log what Claude returned so we can debug empty-content issues
-      console.log(
-        `[campaigns/generate] attempt ${attempt}: got ${posts.length} posts, ` +
-        posts.map((p, i) => `post${i + 1}=${String(p.content ?? "").length}chars`).join(", ")
-      );
+      // Accept any posts with non-empty content (partial success is fine)
+      generated = allPosts.filter((p) => String(p.content ?? "").trim().length > 0);
+      console.log(`[campaigns/generate] got ${allPosts.length} posts, ${generated.length} non-empty`);
 
-      // Accept this attempt only if all posts have non-empty content
-      const allFilled = posts.length >= quantity && posts.every((p) => String(p.content ?? "").trim().length > 0);
-      if (allFilled) {
-        generated = posts;
-        break;
+      if (generated.length === 0) {
+        lastGenError = Array.isArray(resolvedPosts)
+          ? "all posts had empty content"
+          : `posts field was not an array (got ${typeof resolvedPosts})`;
       }
-      lastGenError = Array.isArray(resolvedPosts)
-        ? `${posts.filter((p) => !String(p.content ?? "").trim()).length} post(s) returned empty content`
-        : `posts field is not an array (got ${typeof resolvedPosts})`;
-      console.error(`[campaigns/generate] attempt ${attempt}: ${lastGenError}`);
-    } catch (err) {
-      lastGenError = err instanceof Error ? err.message : String(err);
-      console.error(`[campaigns/generate] attempt ${attempt} threw:`, lastGenError);
     }
+  } catch (err) {
+    lastGenError = err instanceof Error ? err.message : String(err);
   }
 
   if (generated.length === 0) {
     return NextResponse.json(
-      { success: false, error: `Content generation failed after 3 attempts: ${lastGenError}` },
+      { success: false, error: `Content generation failed: ${lastGenError}` },
       { status: 500 }
     );
   }

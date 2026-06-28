@@ -28,6 +28,52 @@ const GenerateSchema = z.object({
   frequency_days: z.number().int().min(1).max(30).default(2),
 });
 
+/**
+ * Robustly parse a JSON array string that may have literal (unescaped) newlines,
+ * tabs, or carriage returns inside string values — a known quirk of Claude tool_use.
+ * Falls back to the original string (truthy, not an array) if all attempts fail.
+ */
+function parsePostsString(raw: string): unknown {
+  // Attempt 1: direct parse (works when the JSON is already well-formed)
+  try { return JSON.parse(raw); } catch { /* fall through */ }
+
+  // Attempt 2: fix unescaped control characters inside JSON string values
+  // Walk char-by-char tracking string state so we only fix chars INSIDE strings.
+  let fixed = "";
+  let inString = false;
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (inString) {
+      if (ch === "\\") {
+        fixed += ch + (raw[i + 1] ?? "");
+        i += 2;
+        continue;
+      } else if (ch === '"') {
+        inString = false;
+        fixed += ch;
+      } else if (ch === "\n") { fixed += "\\n";
+      } else if (ch === "\r") { fixed += "\\r";
+      } else if (ch === "\t") { fixed += "\\t";
+      } else { fixed += ch; }
+    } else {
+      if (ch === '"') inString = true;
+      fixed += ch;
+    }
+    i++;
+  }
+  try { return JSON.parse(fixed); } catch { /* fall through */ }
+
+  // Attempt 3: extract just the JSON array portion (handles stray prefix/suffix text)
+  const start = raw.indexOf("[");
+  const end = raw.lastIndexOf("]");
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)); } catch { /* fall through */ }
+  }
+
+  return raw; // give up — caller handles non-array case
+}
+
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -198,10 +244,11 @@ Requirements:
       lastGenError = `Claude did not call save_posts (stop_reason=${response.stop_reason})`;
     } else {
       const rawPosts = (toolUse.input as { posts?: unknown }).posts;
-      // Claude occasionally returns the posts array as a JSON string — parse it if so
+      // Claude occasionally returns the posts array as a JSON string with literal
+      // newlines inside content values (invalid JSON). Parse robustly if so.
       let resolvedPosts: unknown = rawPosts;
       if (typeof rawPosts === "string") {
-        try { resolvedPosts = JSON.parse(rawPosts); } catch { /* leave as-is */ }
+        resolvedPosts = parsePostsString(rawPosts);
       }
       const allPosts: Array<{ content: string; agent_notes: string }> = Array.isArray(resolvedPosts) ? resolvedPosts : [];
 

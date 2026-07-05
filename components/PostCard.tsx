@@ -464,8 +464,11 @@ export default function PostCard({ post }: PostCardProps) {
         </p>
       )}
 
-      {/* Leonardo AI image generation (hustle posts only) */}
-      {!!(post.metadata as Record<string, unknown>)?.image_prompt && (
+      {/* Leonardo AI image generation — shown for campaign posts (hustle) or any post with a stored image_prompt */}
+      {((): boolean => {
+        const meta = post.metadata as Record<string, unknown>;
+        return !!(meta?.image_prompt) || meta?.post_type === "campaign";
+      })() && (
         <div className="mt-3 border border-purple-100 rounded-lg p-3 bg-purple-50/50">
           <div className="flex items-center justify-between gap-2">
             <button
@@ -504,7 +507,7 @@ export default function PostCard({ post }: PostCardProps) {
             </button>
           </div>
 
-          {showImagePrompt && (
+          {showImagePrompt && !!(post.metadata as Record<string, unknown>)?.image_prompt && (
             <div className="mt-2 p-2 bg-white border border-purple-100 rounded text-xs text-purple-900 leading-relaxed font-mono select-all">
               {String((post.metadata as Record<string, unknown>).image_prompt)}
             </div>

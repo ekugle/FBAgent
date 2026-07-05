@@ -192,40 +192,13 @@ Requirements:
 - Each post must be completely distinct (different angle, hook, or pain point)
 - Follow the template/instructions precisely
 - Include relevant hashtags on every post${isWordPost ? "\n- Each post MUST include its assigned URL exactly as shown above" : ""}
-- Call the save_posts tool with all ${quantity} posts`;
 
-  // Use tool_use to force structured output — the SDK handles all
-  // serialization (special chars, apostrophes, emojis) so no JSON.parse needed.
-  const postsToolSchema = {
-    name: "save_posts",
-    description: "Save the generated post drafts",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        posts: {
-          type: "array",
-          description: `Exactly ${quantity} post drafts`,
-          items: {
-            type: "object",
-            properties: {
-              content: {
-                type: "string",
-                minLength: 1,
-                description: "Complete post text including hashtags (must not be empty)",
-              },
-              agent_notes: {
-                type: "string",
-                description: "One sentence explaining the creative choice",
-              },
-            },
-            required: ["content", "agent_notes"],
-          },
-        },
-      },
-      required: ["posts"],
-    },
-  };
+Respond with ONLY a raw JSON array — no markdown, no code fences, no explanation.
+Each element: {"content": "<full post text>", "agent_notes": "<one sentence>"}`;
 
+  // Use assistant prefill "[" to force Claude to output a raw JSON array directly.
+  // This avoids the tool_use double-encoding bug where the SDK returns posts as a
+  // JSON-escaped string instead of a native array.
   let generated: Array<{ content: string; agent_notes: string }> = [];
   let lastGenError = "";
 
@@ -233,34 +206,35 @@ Requirements:
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 8096,
-      system: systemPrompt,
-      tools: [postsToolSchema],
-      tool_choice: { type: "tool", name: "save_posts" },
-      messages: [{ role: "user", content: userMessage }],
+      system: systemPrompt + " Output ONLY raw JSON — no markdown fences, no explanation.",
+      messages: [
+        { role: "user", content: userMessage },
+        { role: "assistant", content: "[" },
+      ],
     });
 
-    const toolUse = response.content.find((b) => b.type === "tool_use");
-    if (!toolUse || toolUse.type !== "tool_use") {
-      lastGenError = `Claude did not call save_posts (stop_reason=${response.stop_reason})`;
-    } else {
-      const rawPosts = (toolUse.input as { posts?: unknown }).posts;
-      // Claude occasionally returns the posts array as a JSON string with literal
-      // newlines inside content values (invalid JSON). Parse robustly if so.
-      let resolvedPosts: unknown = rawPosts;
-      if (typeof rawPosts === "string") {
-        resolvedPosts = parsePostsString(rawPosts);
-      }
-      const allPosts: Array<{ content: string; agent_notes: string }> = Array.isArray(resolvedPosts) ? resolvedPosts : [];
+    const completion = response.content[0]?.type === "text" ? response.content[0].text : "";
+    const rawJson = "[" + completion;
 
-      // Accept any posts with non-empty content (partial success is fine)
-      generated = allPosts.filter((p) => String(p.content ?? "").trim().length > 0);
-      console.log(`[campaigns/generate] got ${allPosts.length} posts, ${generated.length} non-empty`);
-
-      if (generated.length === 0) {
-        lastGenError = Array.isArray(resolvedPosts)
-          ? "all posts had empty content"
-          : `posts field was not an array (got ${typeof resolvedPosts})`;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawJson);
+    } catch {
+      // Trim to last complete element in case Claude stopped mid-stream
+      const lastClose = rawJson.lastIndexOf("}");
+      if (lastClose !== -1) {
+        try { parsed = JSON.parse(rawJson.slice(0, lastClose + 1) + "]"); } catch { /* give up */ }
       }
+    }
+
+    const allPosts: Array<{ content: string; agent_notes: string }> = Array.isArray(parsed) ? parsed : [];
+    generated = allPosts.filter((p) => String(p.content ?? "").trim().length > 0);
+    console.log(`[campaigns/generate] got ${allPosts.length} posts, ${generated.length} valid`);
+
+    if (generated.length === 0) {
+      lastGenError = Array.isArray(parsed)
+        ? "all posts had empty content"
+        : `could not parse response as JSON array (raw length=${rawJson.length})`;
     }
   } catch (err) {
     lastGenError = err instanceof Error ? err.message : String(err);

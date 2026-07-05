@@ -43,6 +43,8 @@ interface CampaignStats {
 interface BatchResult {
   success: boolean;
   summary?: string;
+  postIds?: string[];
+  needsImageGeneration?: boolean;
   toolsUsed?: string[];
   iterations?: number;
   error?: string;
@@ -321,6 +323,7 @@ function BatchLaunchModal({
   const [frequencyDays, setFrequencyDays] = useState(2);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BatchResult | null>(null);
+  const [imageGenProgress, setImageGenProgress] = useState<{ done: number; total: number } | null>(null);
 
   const scheduledTimes: string[] = [];
   if (startDate) {
@@ -354,6 +357,19 @@ function BatchLaunchModal({
         data = { success: false, error: res.ok ? "Unexpected server response" : `Server error ${res.status} — generation may have timed out. Try fewer posts or try again.` };
       }
       setResult(data);
+      // Auto-generate images for hustle/behind_the_scenes posts
+      if (data.success && data.needsImageGeneration && data.postIds?.length) {
+        const ids = data.postIds;
+        setImageGenProgress({ done: 0, total: ids.length });
+        (async () => {
+          for (let i = 0; i < ids.length; i++) {
+            try {
+              await fetch(`/api/posts/${ids[i]}/generate-image`, { method: "POST" });
+            } catch { /* best-effort */ }
+            setImageGenProgress({ done: i + 1, total: ids.length });
+          }
+        })();
+      }
     } catch (err) {
       setResult({ success: false, error: err instanceof Error ? err.message : "Network error" });
     } finally {
@@ -459,6 +475,18 @@ function BatchLaunchModal({
               </div>
               {result.summary && <p className="text-xs text-gray-700 leading-relaxed">{result.summary}</p>}
               {result.error && <p className="text-xs text-red-600">{result.error}</p>}
+              {result.success && imageGenProgress && (
+                <div className="mt-2">
+                  {imageGenProgress.done < imageGenProgress.total ? (
+                    <p className="text-xs text-sky-600 flex items-center gap-1.5">
+                      <span className="inline-block w-3 h-3 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                      Generating images… {imageGenProgress.done}/{imageGenProgress.total}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-emerald-600">✓ Images generated</p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-3">
               {result.success && (

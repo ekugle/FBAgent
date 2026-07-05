@@ -194,47 +194,45 @@ Requirements:
 - Include relevant hashtags on every post${isWordPost ? "\n- Each post MUST include its assigned URL exactly as shown above" : ""}
 
 Respond with ONLY a raw JSON array — no markdown, no code fences, no explanation.
-Each element: {"content": "<full post text>", "agent_notes": "<one sentence>"}`;
+Each element: {"content": "<full post text>", "agent_notes": "<one sentence>"${campaign.category === "behind_the_scenes" ? `, "image_prompt": "<cinematic photorealistic description of the service professional at work — subject + action + environment + mood/lighting + no text no logos>"` : ""}}`;
 
-  // Use assistant prefill "[" to force Claude to output a raw JSON array directly.
-  // This avoids the tool_use double-encoding bug where the SDK returns posts as a
-  // JSON-escaped string instead of a native array.
-  let generated: Array<{ content: string; agent_notes: string }> = [];
+  const needsImage = campaign.category === "behind_the_scenes";
+  let generated: Array<{ content: string; agent_notes: string; image_prompt?: string }> = [];
   let lastGenError = "";
 
   try {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 8096,
-      system: systemPrompt + " Output ONLY raw JSON — no markdown fences, no explanation.",
-      messages: [
-        { role: "user", content: userMessage },
-        { role: "assistant", content: "[" },
-      ],
+      system: systemPrompt +
+        " IMPORTANT: your entire response must be a single valid JSON array and nothing else." +
+        " No markdown, no code fences, no explanation — just the raw JSON array starting with [ and ending with ].",
+      messages: [{ role: "user", content: userMessage }],
     });
 
-    const completion = response.content[0]?.type === "text" ? response.content[0].text : "";
-    const rawJson = "[" + completion;
+    const raw = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawJson);
-    } catch {
-      // Trim to last complete element in case Claude stopped mid-stream
-      const lastClose = rawJson.lastIndexOf("}");
-      if (lastClose !== -1) {
-        try { parsed = JSON.parse(rawJson.slice(0, lastClose + 1) + "]"); } catch { /* give up */ }
-      }
-    }
+    // Strip markdown fences if Claude wrapped the output
+    let cleaned = raw
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
 
+    // Extract the JSON array bounds in case there's stray text
+    const start = cleaned.indexOf("[");
+    const end = cleaned.lastIndexOf("]");
+    if (start !== -1 && end > start) cleaned = cleaned.slice(start, end + 1);
+
+    const parsed = parsePostsString(cleaned);
     const allPosts: Array<{ content: string; agent_notes: string }> = Array.isArray(parsed) ? parsed : [];
     generated = allPosts.filter((p) => String(p.content ?? "").trim().length > 0);
-    console.log(`[campaigns/generate] got ${allPosts.length} posts, ${generated.length} valid`);
+    console.log(`[campaigns/generate] raw_len=${raw.length} posts=${allPosts.length} valid=${generated.length}`);
 
     if (generated.length === 0) {
       lastGenError = Array.isArray(parsed)
         ? "all posts had empty content"
-        : `could not parse response as JSON array (raw length=${rawJson.length})`;
+        : `response was not a JSON array (first 200 chars: ${raw.slice(0, 200)})`;
     }
   } catch (err) {
     lastGenError = err instanceof Error ? err.message : String(err);
@@ -273,6 +271,9 @@ Each element: {"content": "<full post text>", "agent_notes": "<one sentence>"}`;
         campaign_name: campaign.name,
         ...(isWordPost && urlAssignments[i]
           ? { url: urlAssignments[i]!.url, url_label: urlAssignments[i]!.label }
+          : {}),
+        ...(needsImage && generated[i]?.image_prompt
+          ? { image_prompt: generated[i].image_prompt, banner_caption: "You Do The Hustle, We Get You Paid" }
           : {}),
       },
     };
@@ -337,6 +338,8 @@ Each element: {"content": "<full post text>", "agent_notes": "<one sentence>"}`;
     success: true,
     summary,
     postsCreated: createdIds.length,
+    postIds: createdIds,
+    needsImageGeneration: needsImage && createdIds.length > 0,
     toolsUsed: ["direct_generation"],
     iterations: 1,
   });
